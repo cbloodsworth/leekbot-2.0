@@ -1,7 +1,7 @@
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::error::Error;
 use std::fs;
 

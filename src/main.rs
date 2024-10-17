@@ -5,6 +5,9 @@ use serenity::prelude::*;
 use dotenv::dotenv;
 use std::env;
 
+mod lcapi;
+use lcapi::client::*;
+
 struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
@@ -17,8 +20,7 @@ impl EventHandler for Handler {
     }
 }
 
-#[tokio::main]
-async fn main() {
+async fn bot_stuff_temp() {
     // Load discord bot token
     dotenv().ok();
     let token = env::var("DISCORD_TOKEN")
@@ -35,4 +37,19 @@ async fn main() {
     if let Err(why) = client.start().await {
         println!("Client error: {why:?}");
     }
+}
+
+#[tokio::main]
+async fn main() {
+    let user = "cbloodsworth";
+    match fetch_user(user.to_string()).await {
+        Ok(user_data) => {
+            println!("{}", user_data);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Error fetching user data: {}", e);
+            Err(e)
+        }
+    }.unwrap();
 }

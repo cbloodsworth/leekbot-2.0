@@ -1,0 +1,27 @@
+query userBadges($username: String!) {
+  matchedUser(username: $username) {
+    badges {
+      id
+      name
+      shortName
+      displayName
+      icon
+      hoverText
+      medal {
+        slug
+        config {
+          iconGif
+          iconGifBackground
+        }
+      }
+      creationDate
+      category
+    }
+    upcomingBadges {
+      name
+      icon
+      progress
+    }
+  }
+}
+

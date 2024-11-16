@@ -1,7 +1,0 @@
-query getStreakCounter {
-  streakCounter {
-    streakCount
-    daysSkipped
-    currentDayCompleted
-  }
-}

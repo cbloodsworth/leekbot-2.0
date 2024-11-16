@@ -1,8 +1,0 @@
-query getUserProfile($username: String!) {
-  matchedUser(username: $username) {
-    activeBadge {
-      displayName
-      icon
-    }
-  }
-}

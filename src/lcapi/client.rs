@@ -25,6 +25,12 @@ pub struct UserData {
     pub ranking: u64,
 }
 
+impl UserData {
+    fn to_string(&self) -> String {
+        format!("{}", self)
+    }
+}
+
 impl std::fmt::Display for UserData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -40,20 +46,22 @@ impl std::fmt::Display for UserData {
     }
 }
 
+/// Returns an error message for when a JSON attribute can't be obtained.
+fn err_cant_get(attribute: &str, username: &str) -> String {
+    format!("Couldn't get {} for {}", attribute, username)
+}
+
 fn read_query(path: &str) -> Result<String> {
     Ok(fs::read_to_string(path)?)
 }
 
-fn extract_u64(value: &Value, keys: &[&str]) -> Result<u64> {
-    let mut current = value;
-    for &key in keys {
-        current = current.get(key)
-            .with_context(|| format!("Missing key: {}", key))?;
-    }
-    current.as_u64().context("")
+fn extract_u64_from_json(value: &Value, key: &str) -> Result<u64> {
+    value.get(key)
+        .with_context(|| format!("Missing key: {}", key))?
+        .as_u64().context("Could not convert json integer into u64")
 }
 
-pub async fn fetch_user(username: String) -> Result<UserData> {
+pub async fn fetch_user(username: &str) -> Result<UserData> {
     let query = read_query("src/lcapi/lcuser.graphql")?;
     let variables = serde_json::json!({ "username": username });
     let body = RequestBody { query, variables };
@@ -81,15 +89,20 @@ pub async fn fetch_user(username: String) -> Result<UserData> {
 
     // Get the number of solved problems array
     let num_solved_array = user
-        .get("submitStats").with_context(|| format!("Couldn't retrieve submission statistics for user: {}", username))?
+        .get("submitStats").context(err_cant_get("submission statistics", username))?
         .get("acSubmissionNum").context("Couldn't retrieve submission statistics.")?
         .as_array().context("Malformed submission data; check JSON schema.")?;
 
+    let ranking = user
+        .get("profile").context(err_cant_get("profile", username))?
+        .get("ranking").context(err_cant_get("ranking", username))?
+        .as_u64().context("Could not convert ranking to u64.")?;
+
     Ok(UserData {
-        total_solved:  extract_u64(&num_solved_array[0], &["count"]).context("Couldn't get total_solved")?,
-        easy_solved:   extract_u64(&num_solved_array[1], &["count"]).context("Couldn't get easy_solved")?, 
-        medium_solved: extract_u64(&num_solved_array[2], &["count"]).context("Couldn't get medium_solved")?, 
-        hard_solved:   extract_u64(&num_solved_array[3], &["count"]).context("Couldn't get hard_solved")?, 
-        ranking: extract_u64(&data, &["matchedUser", "profile", "ranking"]).context("Couldn't get ranking")?
+        ranking,
+        total_solved:  extract_u64_from_json(&num_solved_array[0], "count").context("Couldn't get total_solved")?,
+        easy_solved:   extract_u64_from_json(&num_solved_array[1], "count").context("Couldn't get easy_solved")?, 
+        medium_solved: extract_u64_from_json(&num_solved_array[2], "count").context("Couldn't get medium_solved")?, 
+        hard_solved:   extract_u64_from_json(&num_solved_array[3], "count").context("Couldn't get hard_solved")?, 
     })
 }

@@ -1,3 +1,4 @@
+use log::info;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -8,18 +9,57 @@ use std::env;
 mod lcapi;
 use lcapi::client::fetch_user;
 
+use anyhow::{Result, Error, anyhow};
+
+const MAX_CMD_LENGTH: usize = 12;
+
 pub struct Commands;
+/// Async command implementations
 impl Commands {
-    pub async fn get_user_data(user: &str) -> String {
-        match fetch_user(user.to_string()).await {
-            Ok(user) => format!("{}", user),
-            Err(why) => { 
-                log::error!("Fetching user data: {}", why);
-                format!("ERROR: {}", why)
+    pub async fn run_command(input: String) -> String {
+        let input = &input[1..];
+        let parsed = input.split_whitespace().collect::<Vec<_>>();
+        let (_, parameters) = parsed.split_at(1);
+        let command = parsed[0];
+
+        match command {
+            "audit" => {
+                Self::get_user_data(parameters[0]).await
             }
-        }
+            "help" => {
+                Ok(Self::get_help())
+            }
+            "clanker" => {
+                Ok(String::from("call me clanker one more mf time"))
+            }
+            _ => {
+                if Commands::is_valid_cmd(&command) {
+                    info!("User submitted unknown command: {}", command);
+                    Err(anyhow!("No such command found: {}, see $help for commands.", command))
+                }
+                else {
+                    info!("User submitted invalid command: {}", command);
+                    Err(anyhow!("Invalid command syntax."))
+                }
+            }
+        }.unwrap_or_else(|err| format!("ERROR: {}", err))
     }
 
+    async fn get_user_data(user: &str) -> Result<String> {
+        fetch_user(user).await.and_then(|u| Ok(format!("{}", u)))
+    }
+
+}
+
+/// Non-async helpers
+impl Commands {
+    /// Ensures that the string slice conforms to C-like identifier regex
+    fn is_valid_cmd(s: &str) -> bool {
+        s.len() <= MAX_CMD_LENGTH && regex::Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap().is_match(s)
+    }
+
+    /// Gets a help string. Should be updated after a new command is added
+    /// TODO: Generate automatically?
     pub fn get_help() -> String {
         String::from(
 r#"
@@ -28,38 +68,26 @@ r#"
 `$help`:  Get information on supported commands
 "#)
     }
-
-    pub async fn run_command(input: String) -> String {
-        let input = &input[1..];
-        let parsed = input.split_whitespace().collect::<Vec<_>>();
-        let command = parsed[0];
-        let (_, parameters) = parsed.split_at(1);
-
-        match command {
-            "audit" => Self::get_user_data(parameters[0]).await,
-            "help" => Self::get_help(),
-            "clanker" => String::from("call me clanker one more mf time"),
-            _ => format!("Unknown command: {}", command)
-        }
-    }
 }
+
 
 struct LeekHandler;
 #[async_trait]
 impl EventHandler for LeekHandler {
     async fn message(&self, ctx: Context, msg: Message) {
         let channel = msg.channel_id;
+        let content = msg.content.clone();
 
         // Clanker detection!
-        if msg.content.to_lowercase().find("clanker").is_some() {
+        if content.to_lowercase().find("clanker").is_some() {
             log::error!("Clanker");
             let _ = msg.react(&ctx.http, 
                 serenity::all::ReactionType::Unicode(String::from("😡"))).await;
         }
 
         // Commands
-        if msg.content.starts_with("$") {
-            let response = Commands::run_command(msg.content).await;
+        if content.starts_with("$") {
+            let response = Commands::run_command(content).await;
             if let Err(why) = channel.say(&ctx.http, response).await {
                 let _ = channel.say(&ctx.http, "Oops, internal error.").await;
                 log::error!("Error sending message: {why:?}");

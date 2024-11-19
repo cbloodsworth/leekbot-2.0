@@ -19,8 +19,8 @@ impl Commands {
     pub async fn run_command(input: String) -> String {
         let input = &input[1..];
         let parsed = input.split_whitespace().collect::<Vec<_>>();
-        let (_, parameters) = parsed.split_at(1);
-        let command = parsed[0];
+        let (command, parameters) = parsed.split_at(1);
+        let command = command[0];  // turn a [&str] into a &str
 
         match command {
             "audit" => {
@@ -55,7 +55,8 @@ impl Commands {
 impl Commands {
     /// Ensures that the string slice conforms to C-like identifier regex
     fn is_valid_cmd(s: &str) -> bool {
-        s.len() <= MAX_CMD_LENGTH && regex::Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap().is_match(s)
+        s.len() <= MAX_CMD_LENGTH &&
+        regex::Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap().is_match(s)
     }
 
     /// Gets a help string. Should be updated after a new command is added
@@ -86,7 +87,7 @@ impl EventHandler for LeekHandler {
         }
 
         // Commands
-        if content.starts_with("$") {
+        if content.starts_with("$") && content.len() > 1 {
             let response = Commands::run_command(content).await;
             if let Err(why) = channel.say(&ctx.http, response).await {
                 let _ = channel.say(&ctx.http, "Oops, internal error.").await;

@@ -3,6 +3,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use anyhow::{Error, Context, Result};
+use std::collections::HashSet;
 use std::fs;
 
 
@@ -23,12 +24,6 @@ pub struct UserData {
     pub medium_solved: u64,
     pub hard_solved: u64,
     pub ranking: u64,
-}
-
-impl UserData {
-    fn to_string(&self) -> String {
-        format!("{}", self)
-    }
 }
 
 impl std::fmt::Display for UserData {
@@ -61,7 +56,8 @@ fn extract_u64_from_json(value: &Value, key: &str) -> Result<u64> {
         .as_u64().context("Could not convert json integer into u64")
 }
 
-pub async fn fetch_user(username: &str) -> Result<UserData> {
+/// Runs a GraphQL query on the leetcode servers for `username`.
+pub async fn query_user(username: &str) -> Result<QueryResponse> {
     let query = read_query("src/lcapi/lcuser.graphql")?;
     let variables = serde_json::json!({ "username": username });
     let body = RequestBody { query, variables };
@@ -70,15 +66,18 @@ pub async fn fetch_user(username: &str) -> Result<UserData> {
         (HeaderName::from_static("referer"), HeaderValue::from_str("https://leetcode.com")?)
     ]);
 
-    let response = Client::new()
-        .post("https://leetcode.com/graphql")
-        .headers(headers)
-        .json(&body)
-        .send()
-        .await?
-        .json::<QueryResponse>()
-        .await?;
+    Ok(Client::new()
+            .post("https://leetcode.com/graphql")
+            .headers(headers)
+            .json(&body)
+            .send()
+            .await?
+            .json::<QueryResponse>()
+            .await?)
+}
 
+pub async fn fetch_user(username: &str) -> Result<UserData> {
+    let response = query_user(username).await?;
     let data = response.data.context("No data found in the response.")?;
 
     // Retrieve user, or raise error if it doesn't exist

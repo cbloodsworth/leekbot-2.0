@@ -47,7 +47,8 @@ fn err_cant_get(attribute: &str, username: &str) -> String {
 }
 
 fn read_query(path: &str) -> Result<String> {
-    Ok(fs::read_to_string(path)?)
+    Ok(fs::read_to_string(path)
+        .with_context(|| format!("No such file or directory: {}", path))?)
 }
 
 fn extract_u64_from_json(value: &Value, key: &str) -> Result<u64> {
@@ -57,7 +58,7 @@ fn extract_u64_from_json(value: &Value, key: &str) -> Result<u64> {
 }
 
 /// Runs a GraphQL query on the leetcode servers for `username`.
-pub async fn query_user(username: &str) -> Result<QueryResponse> {
+async fn query_user(username: &str) -> Result<QueryResponse> {
     let query = read_query("src/lcapi/lcuser.graphql")?;
     let variables = serde_json::json!({ "username": username });
     let body = RequestBody { query, variables };
@@ -74,6 +75,56 @@ pub async fn query_user(username: &str) -> Result<QueryResponse> {
             .await?
             .json::<QueryResponse>()
             .await?)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Submission {
+    statusDisplay: String,
+    lang: String,
+    timestamp: String,
+    title: String,
+    titleSlug: String,
+}
+
+impl std::fmt::Display for Submission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "**Submission**: {}\n\
+            \tStatus: *{}*\n\
+            \tLanguage: `{}`",
+            self.title, self.statusDisplay, self.lang
+        )
+    }
+}
+
+pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>> {
+    let response = query_user(username).await?;
+    let data = response
+        .data
+        .context("No data found in the response.")?;
+
+    let raw_submissions = data
+        .get("recentSubmissionList")
+        .context(err_cant_get("recentSubmissionList", username))?
+        .as_array()
+        .context("Couldn't deserialize recentSubmissionList into an array.")?;
+
+    raw_submissions
+        .into_iter()
+        .map(|val| serde_json::from_value::<Submission>(val.clone()).context("Couldn't deserialize values into Submissions."))
+        .collect()
+
+}
+
+pub async fn fetch_recently_completed(username: &str) -> Result<Vec<Submission>> {
+    let submitted = fetch_recently_submitted(username).await?;
+    
+    // Only grab the ones that were accepted
+    Ok(submitted
+        .into_iter()
+        .filter(|sub| sub.statusDisplay == String::from("Accepted"))
+        .collect())
 }
 
 pub async fn fetch_user(username: &str) -> Result<UserData> {

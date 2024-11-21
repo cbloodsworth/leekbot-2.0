@@ -7,9 +7,9 @@ use dotenv::dotenv;
 use std::env;
 
 mod lcapi;
-use lcapi::client::fetch_user;
+use lcapi::client::*;
 
-use anyhow::{Result, Error, anyhow};
+use anyhow::{Result, Context, anyhow};
 
 const MAX_CMD_LENGTH: usize = 12;
 
@@ -25,6 +25,9 @@ impl Commands {
         match command {
             "audit" => {
                 Self::get_user_data(parameters[0]).await
+            }
+            "recent" => {
+                Self::get_recently_completed(parameters[0]).await
             }
             "help" => {
                 Ok(Self::get_help())
@@ -45,8 +48,15 @@ impl Commands {
         }.unwrap_or_else(|err| format!("ERROR: {}", err))
     }
 
-    async fn get_user_data(user: &str) -> Result<String> {
-        fetch_user(user).await.and_then(|u| Ok(format!("{}", u)))
+    async fn get_recently_completed(username: &str) -> Result<String> {
+        Ok(format!("{}", fetch_recently_completed(username)
+            .await?
+            .get(0)
+            .context(format!("No recently completed problems for {}", username))?))
+    }
+
+    async fn get_user_data(username: &str) -> Result<String> {
+        fetch_user(username).await.and_then(|u| Ok(format!("{}", u)))
     }
 
 }
@@ -75,7 +85,7 @@ r#"
 struct LeekHandler;
 #[async_trait]
 impl EventHandler for LeekHandler {
-    async fn message(&self, ctx: Context, msg: Message) {
+    async fn message(&self, ctx: serenity::client::Context, msg: Message) {
         let channel = msg.channel_id;
         let content = msg.content.clone();
 

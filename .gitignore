@@ -1,5 +1,6 @@
 # teehee! don't want this little guy,,
 .env
+.discord_secret
 
 # Binaries for programs and tests
 /target/

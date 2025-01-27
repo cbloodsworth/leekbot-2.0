@@ -55,7 +55,7 @@ impl Commands {
     }
 
     async fn get_user_data(username: &str) -> Result<String> {
-        lcapi::fetch_user(username).await.and_then(|u| Ok(format!("{}", u)))
+        lcapi::fetch_user(username).await.and_then(|u| Ok(format!("{:?}", u)))
     }
 
 }
@@ -107,7 +107,7 @@ impl EventHandler for LeekHandler {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     // Begin logger
     env_logger::init();
 
@@ -115,6 +115,11 @@ async fn main() {
     dotenv().ok();
     let token = env::var("DISCORD_TOKEN")
         .expect("Expected 'DISCORD_TOKEN=<token>' in .env in project root.");
+
+    // Initialize database
+    lcdb::initialize_db()?;
+
+    lcdb::query_most_recent_problem("cbloodsworth")?;
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
@@ -127,4 +132,6 @@ async fn main() {
     if let Err(why) = client.start().await {
         log::error!("Client error: {why:?}");
     }
+
+    Ok(())
 }

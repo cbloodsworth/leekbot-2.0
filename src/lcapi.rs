@@ -3,9 +3,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use anyhow::{Error, Context, Result};
-use std::collections::HashSet;
 use std::fs;
 
+use crate::models::*;
 
 #[derive(Serialize)]
 struct RequestBody {
@@ -16,29 +16,6 @@ struct RequestBody {
 #[derive(Deserialize)]
 struct QueryResponse {
     data: Option<Value>,
-}
-
-pub struct UserData {
-    pub total_solved: u64,
-    pub easy_solved: u64,
-    pub medium_solved: u64,
-    pub hard_solved: u64,
-    pub ranking: u64,
-}
-
-impl std::fmt::Display for UserData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "User Stats:\n\
-             Total Solved: {}\n\
-             Easy Solved: {}\n\
-             Medium Solved: {}\n\
-             Hard Solved: {}\n\
-             Ranking: {}",
-            self.total_solved, self.easy_solved, self.medium_solved, self.hard_solved, self.ranking
-        )
-    }
 }
 
 /// Returns an error message for when a JSON attribute can't be obtained.
@@ -59,7 +36,7 @@ fn extract_u64_from_json(value: &Value, key: &str) -> Result<u64> {
 
 /// Runs a GraphQL query on the leetcode servers for `username`.
 async fn query_user(username: &str) -> Result<QueryResponse> {
-    let query = read_query("src/lcapi/lcuser.graphql")?;
+    let query = read_query("src/queries/lcuser.graphql")?;
     let variables = serde_json::json!({ "username": username });
     let body = RequestBody { query, variables };
     let headers = HeaderMap::from_iter([
@@ -75,27 +52,6 @@ async fn query_user(username: &str) -> Result<QueryResponse> {
             .await?
             .json::<QueryResponse>()
             .await?)
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Submission {
-    statusDisplay: String,
-    lang: String,
-    timestamp: String,
-    title: String,
-    titleSlug: String,
-}
-
-impl std::fmt::Display for Submission {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "**Submission**: {}\n\
-            \tStatus: *{}*\n\
-            \tLanguage: `{}`",
-            self.title, self.statusDisplay, self.lang
-        )
-    }
 }
 
 pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>> {
@@ -127,7 +83,7 @@ pub async fn fetch_recently_completed(username: &str) -> Result<Vec<Submission>>
         .collect())
 }
 
-pub async fn fetch_user(username: &str) -> Result<UserData> {
+pub async fn fetch_user(username: &str) -> Result<User> {
     let response = query_user(username).await?;
     let data = response.data.context("No data found in the response.")?;
 
@@ -148,11 +104,15 @@ pub async fn fetch_user(username: &str) -> Result<UserData> {
         .get("ranking").context(err_cant_get("ranking", username))?
         .as_u64().context("Could not convert ranking to u64.")?;
 
-    Ok(UserData {
-        ranking,
-        total_solved:  extract_u64_from_json(&num_solved_array[0], "count").context("Couldn't get total_solved")?,
-        easy_solved:   extract_u64_from_json(&num_solved_array[1], "count").context("Couldn't get easy_solved")?, 
-        medium_solved: extract_u64_from_json(&num_solved_array[2], "count").context("Couldn't get medium_solved")?, 
-        hard_solved:   extract_u64_from_json(&num_solved_array[3], "count").context("Couldn't get hard_solved")?, 
+    Ok(User {
+        id: 0,
+        username: username.to_string(),
+        data: UserData {
+            ranking,
+            total_solved:  extract_u64_from_json(&num_solved_array[0], "count").context("Couldn't get total_solved")?,
+            easy_solved:   extract_u64_from_json(&num_solved_array[1], "count").context("Couldn't get easy_solved")?, 
+            medium_solved: extract_u64_from_json(&num_solved_array[2], "count").context("Couldn't get medium_solved")?, 
+            hard_solved:   extract_u64_from_json(&num_solved_array[3], "count").context("Couldn't get hard_solved")?, 
+        }
     })
 }

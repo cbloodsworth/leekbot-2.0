@@ -6,8 +6,7 @@ use serenity::prelude::*;
 use dotenv::dotenv;
 use std::env;
 
-mod lcapi;
-use lcapi::client::*;
+use leekbot::*;
 
 use anyhow::{Result, Context, anyhow};
 
@@ -49,14 +48,14 @@ impl Commands {
     }
 
     async fn get_recently_completed(username: &str) -> Result<String> {
-        Ok(format!("{}", fetch_recently_completed(username)
+        Ok(format!("{}", lcapi::fetch_recently_completed(username)
             .await?
             .get(0)
             .context(format!("No recently completed problems for {}", username))?))
     }
 
     async fn get_user_data(username: &str) -> Result<String> {
-        fetch_user(username).await.and_then(|u| Ok(format!("{}", u)))
+        lcapi::fetch_user(username).await.and_then(|u| Ok(format!("{}", u)))
     }
 
 }

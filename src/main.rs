@@ -119,8 +119,6 @@ async fn main() -> Result<()> {
     // Initialize database
     lcdb::initialize_db()?;
 
-    lcdb::query_most_recent_problem("cbloodsworth")?;
-
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;

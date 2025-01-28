@@ -46,9 +46,10 @@ impl std::fmt::Display for Submission {
         write!(
             f,
             "**Submission**: {}\n\
+            https://leetcode.com/problems/{}/\n\
             \tStatus: *{}*\n\
             \tLanguage: `{}`",
-            self.title, self.statusDisplay, self.lang
+            self.title, self.titleSlug, self.statusDisplay, self.lang
         )
     }
 }

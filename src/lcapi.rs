@@ -2,7 +2,7 @@ use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use anyhow::{Error, Context, Result};
+use anyhow::{Context, Result};
 use std::fs;
 
 use crate::models::*;
@@ -18,46 +18,9 @@ struct QueryResponse {
     data: Option<Value>,
 }
 
-/// Returns an error message for when a JSON attribute can't be obtained.
-fn err_cant_get(attribute: &str, username: &str) -> String {
-    format!("Couldn't get {} for {}", attribute, username)
-}
-
-fn read_query(path: &str) -> Result<String> {
-    Ok(fs::read_to_string(path)
-        .with_context(|| format!("No such file or directory: {}", path))?)
-}
-
-fn extract_u64_from_json(value: &Value, key: &str) -> Result<u64> {
-    value.get(key)
-        .with_context(|| format!("Missing key: {}", key))?
-        .as_u64().context("Could not convert json integer into u64")
-}
-
-/// Runs a GraphQL query on the leetcode servers for `username`.
-async fn query_user(username: &str) -> Result<QueryResponse> {
-    let query = read_query("src/queries/lcuser.graphql")?;
-    let variables = serde_json::json!({ "username": username });
-    let body = RequestBody { query, variables };
-    let headers = HeaderMap::from_iter([
-        (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
-        (HeaderName::from_static("referer"), HeaderValue::from_str("https://leetcode.com")?)
-    ]);
-
-    Ok(Client::new()
-            .post("https://leetcode.com/graphql")
-            .headers(headers)
-            .json(&body)
-            .send()
-            .await?
-            .json::<QueryResponse>()
-            .await?)
-}
-
 pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>> {
     let response = query_user(username).await?;
-    let data = response
-        .data
+    let data = response.data
         .context("No data found in the response.")?;
 
     let raw_submissions = data
@@ -70,7 +33,6 @@ pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>>
         .into_iter()
         .map(|val| serde_json::from_value::<Submission>(val.clone()).context("Couldn't deserialize values into Submissions."))
         .collect()
-
 }
 
 pub async fn fetch_recently_completed(username: &str) -> Result<Vec<Submission>> {
@@ -116,3 +78,40 @@ pub async fn fetch_user(username: &str) -> Result<User> {
         }
     })
 }
+
+/// Runs a GraphQL query on the leetcode servers for `username`.
+async fn query_user(username: &str) -> Result<QueryResponse> {
+    let query = read_query_from_file("src/queries/lcuser.graphql")?;
+    let variables = serde_json::json!({ "username": username });
+    let body = RequestBody { query, variables };
+    let headers = HeaderMap::from_iter([
+        (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
+        (HeaderName::from_static("referer"), HeaderValue::from_str("https://leetcode.com")?)
+    ]);
+
+    Ok(Client::new()
+            .post("https://leetcode.com/graphql")
+            .headers(headers)
+            .json(&body)
+            .send()
+            .await?
+            .json::<QueryResponse>()
+            .await?)
+}
+
+fn read_query_from_file(path: &str) -> Result<String> {
+    Ok(fs::read_to_string(path)
+        .with_context(|| format!("No such file or directory: {}", path))?)
+}
+
+/// Returns an error message for when a JSON attribute can't be obtained.
+fn err_cant_get(attribute: &str, username: &str) -> String {
+    format!("Couldn't get {} for {}", attribute, username)
+}
+
+fn extract_u64_from_json(value: &Value, key: &str) -> Result<u64> {
+    value.get(key)
+        .with_context(|| format!("Missing key: {}", key))?
+        .as_u64().context("Could not convert json integer into u64")
+}
+

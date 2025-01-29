@@ -1,5 +1,6 @@
 # teehee! don't want this little guy,,
 .env
+.vscode
 .discord_secret
 leek.db
 

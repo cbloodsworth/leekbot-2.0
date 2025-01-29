@@ -1,14 +1,11 @@
 use serde::{Serialize, Deserialize};
+use serde::de::{self, Deserializer};
+
 
 #[derive(Debug, Clone)]
 pub struct User {
-    pub id: i32,
     pub username: String,
-    pub data: UserData,
-}
 
-#[derive(Debug, Clone)]
-pub struct UserData {
     pub total_solved: u64,
     pub easy_solved: u64,
     pub medium_solved: u64,
@@ -16,7 +13,7 @@ pub struct UserData {
     pub ranking: u64,
 }
 
-impl std::fmt::Display for UserData {
+impl std::fmt::Display for User {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -36,9 +33,17 @@ impl std::fmt::Display for UserData {
 pub struct Submission {
     pub statusDisplay: String,
     pub lang: String,
-    pub timestamp: String,
+    #[serde(deserialize_with = "string_to_usize")]
+    pub timestamp: usize,
     pub title: String,
     pub titleSlug: String,
+}
+
+fn string_to_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where D: Deserializer<'de>
+{
+    let s = String::deserialize(deserializer)?;
+    s.parse::<usize>().map_err(de::Error::custom)
 }
 
 impl std::fmt::Display for Submission {
@@ -48,8 +53,9 @@ impl std::fmt::Display for Submission {
             "**Submission**: {}\n\
             https://leetcode.com/problems/{}/\n\
             \tStatus: *{}*\n\
+            \tTimestamp: {} \n\
             \tLanguage: `{}`",
-            self.title, self.titleSlug, self.statusDisplay, self.lang
+            self.title, self.titleSlug, self.statusDisplay, self.timestamp, self.lang
         )
     }
 }

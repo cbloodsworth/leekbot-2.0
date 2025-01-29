@@ -2,7 +2,7 @@ use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::fs;
 
 use crate::models::*;
@@ -25,14 +25,23 @@ pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>>
 
     let raw_submissions = data
         .get("recentSubmissionList")
-        .context(err_cant_get("recentSubmissionList", username))?
-        .as_array()
-        .context("Couldn't deserialize recentSubmissionList into an array.")?;
+        .context(err_cant_get("recentSubmissionList", username))?;
 
-    raw_submissions
-        .into_iter()
-        .map(|val| serde_json::from_value::<Submission>(val.clone()).context("Couldn't deserialize values into Submissions."))
-        .collect()
+    match raw_submissions {
+        Value::Array(submissions) => {
+            submissions
+                .into_iter()
+                .map(|val| serde_json::from_value::<Submission>(val.clone())
+                    .context("Couldn't deserialize values into Submissions."))
+                .collect()
+        }
+        Value::Null => {
+            Err(anyhow!("Could not find recent submissions for user {username}."))
+        }
+        _ => {
+            Err(anyhow!("Recent submissions list for {username} was not an array."))
+        }
+    }
 }
 
 pub async fn fetch_recently_completed(username: &str) -> Result<Vec<Submission>> {
@@ -45,8 +54,8 @@ pub async fn fetch_recently_completed(username: &str) -> Result<Vec<Submission>>
         .collect())
 }
 
-pub async fn fetch_user(username: &str) -> Result<User> {
-    let response = query_user(username).await?;
+pub async fn fetch_user(username: String) -> Result<User> {
+    let response = query_user(&username).await?;
     let data = response.data.context("No data found in the response.")?;
 
     // Retrieve user, or raise error if it doesn't exist
@@ -57,25 +66,22 @@ pub async fn fetch_user(username: &str) -> Result<User> {
 
     // Get the number of solved problems array
     let num_solved_array = user
-        .get("submitStats").context(err_cant_get("submission statistics", username))?
+        .get("submitStats").context(err_cant_get("submission statistics", &username))?
         .get("acSubmissionNum").context("Couldn't retrieve submission statistics.")?
         .as_array().context("Malformed submission data; check JSON schema.")?;
 
     let ranking = user
-        .get("profile").context(err_cant_get("profile", username))?
-        .get("ranking").context(err_cant_get("ranking", username))?
+        .get("profile").context(err_cant_get("profile", &username))?
+        .get("ranking").context(err_cant_get("ranking", &username))?
         .as_u64().context("Could not convert ranking to u64.")?;
 
     Ok(User {
-        id: 0,
-        username: username.to_string(),
-        data: UserData {
+            username,
             ranking,
             total_solved:  extract_u64_from_json(&num_solved_array[0], "count").context("Couldn't get total_solved")?,
             easy_solved:   extract_u64_from_json(&num_solved_array[1], "count").context("Couldn't get easy_solved")?, 
             medium_solved: extract_u64_from_json(&num_solved_array[2], "count").context("Couldn't get medium_solved")?, 
             hard_solved:   extract_u64_from_json(&num_solved_array[3], "count").context("Couldn't get hard_solved")?, 
-        }
     })
 }
 

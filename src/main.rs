@@ -23,7 +23,9 @@ impl Commands {
 
         match command {
             "audit" => {
-                Self::get_user_data(parameters[0]).await
+                lcapi::fetch_user(String::from(parameters[0]))
+                    .await
+                    .map(|user| format!("{}",user))
             }
             "recent" => {
                 Self::get_recently_completed(parameters[0]).await
@@ -53,11 +55,6 @@ impl Commands {
             .get(0)
             .context(format!("No recently completed problems for {}", username))?))
     }
-
-    async fn get_user_data(username: &str) -> Result<String> {
-        lcapi::fetch_user(username).await.and_then(|u| Ok(format!("{:?}", u)))
-    }
-
 }
 
 /// Non-async helpers
@@ -106,6 +103,15 @@ impl EventHandler for LeekHandler {
     }
 }
 
+/// Checks recent Leetcode submissions for all tracked users and sends
+///   any new submissions to Discord.
+/// 
+/// Intended to be run regularly.
+fn check_recent_submissions() -> Result<()> {
+    let users = lcdb::query_tracked_users;
+    todo!()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Begin logger
@@ -118,6 +124,9 @@ async fn main() -> Result<()> {
 
     // Initialize database
     lcdb::initialize_db()?;
+
+    let user = lcapi::fetch_user(String::from("cbloodsworth")).await?;
+    log::error!("cbloodsworth is tracked: {}", lcdb::is_tracked(&user)?);
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES

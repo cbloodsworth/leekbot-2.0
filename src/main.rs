@@ -1,4 +1,3 @@
-use log::info;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -38,11 +37,11 @@ impl Commands {
             }
             _ => {
                 if Commands::is_valid_cmd(&command) {
-                    info!("User submitted unknown command: {}", command);
+                    log::info!("User submitted unknown command: {}", command);
                     Err(anyhow!("No such command found: {}, see $help for commands.", command))
                 }
                 else {
-                    info!("User submitted invalid command: {}", command);
+                    log::info!("User submitted invalid command: {}", command);
                     Err(anyhow!("Invalid command syntax."))
                 }
             }
@@ -114,19 +113,16 @@ fn check_recent_submissions() -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Begin logger
-    env_logger::init();
-
     // Load discord bot token
     dotenv().ok();
     let token = env::var("DISCORD_TOKEN")
         .expect("Expected 'DISCORD_TOKEN=<token>' in .env in project root.");
 
+    // Begin logger
+    env_logger::Builder::from_env("LOG_LEVEL").init();
+
     // Initialize database
     lcdb::initialize_db()?;
-
-    let user = lcapi::fetch_user(String::from("cbloodsworth")).await?;
-    log::error!("cbloodsworth is tracked: {}", lcdb::is_tracked(&user)?);
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES

@@ -24,10 +24,33 @@ impl Commands {
             "audit" => {
                 lcapi::fetch_user(String::from(parameters[0]))
                     .await
-                    .map(|user| format!("{}",user))
+                    .map(|user| {
+                        let tracked = lcdb::is_tracked(&user).unwrap();
+                        let output = format!("{}\nThis user is {}currently being tracked.", user, if tracked {""} else {"not "});
+
+                        output
+                    })
             }
             "recent" => {
                 Self::get_recently_completed(parameters[0]).await
+            }
+            "track" => {
+                lcapi::fetch_user(String::from(parameters[0]))
+                    .await
+                    .and_then(|user| {
+                        lcdb::track_user(&user)?;
+                        Ok(user)
+                    })
+                    .map(|user| format!("Successfully tracking {}.", user.username))
+            }
+            "untrack" => {
+                lcapi::fetch_user(String::from(parameters[0]))
+                    .await
+                    .and_then(|user| {
+                        lcdb::untrack_user(&user)?;
+                        Ok(user)
+                    })
+                    .map(|user| format!("Successfully untracked {}.", user.username))
             }
             "help" => {
                 Ok(Self::get_help())

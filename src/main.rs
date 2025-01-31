@@ -5,7 +5,8 @@ use serenity::prelude::*;
 use dotenv::dotenv;
 use std::env;
 
-use leekbot::*;
+use leekbot::lcapi;
+use leekbot::lcdb;
 
 use anyhow::{Result, Context, anyhow};
 
@@ -93,7 +94,10 @@ impl Commands {
         String::from(
 r#"
 **Command List:**
-`$audit <leetcode username>`:  Get stats on a leetcode user
+`$audit <leetcode username>`:  Get stats on a leetcode user.
+`$recent <leetcode username>`:  Get the most recent submission from a leetcode user.
+`$track <leetcode username>`:  Track a user. This will cause the bot to announce new submissions from this user.
+`$untrack <leetcode username>`:  Untrack a user.
 `$help`:  Get information on supported commands
 "#)
     }
@@ -130,7 +134,7 @@ impl EventHandler for LeekHandler {
 /// 
 /// Intended to be run regularly.
 fn check_recent_submissions() -> Result<()> {
-    let users = lcdb::query_tracked_users;
+    let users = lcdb::query_tracked_users();
     todo!()
 }
 

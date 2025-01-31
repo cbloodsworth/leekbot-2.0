@@ -1,15 +1,20 @@
 use serde::{Serialize, Deserialize};
 use serde::de::{self, Deserializer};
 
+use std::time::Duration;
+
+// Threshold for a problem to be considered recent is 8 hours, or 28800 seconds
+pub const RECENT_THRESHOLD: usize = Duration::new(28800, 0).as_millis() as usize;
 
 #[derive(Debug, Clone)]
 pub struct User {
     pub username: String,
 
-    pub total_solved: u64,
     pub easy_solved: u64,
     pub medium_solved: u64,
     pub hard_solved: u64,
+    pub total_solved: u64,
+
     pub ranking: u64,
 }
 
@@ -17,26 +22,34 @@ impl std::fmt::Display for User {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "User Stats:\n\
-             Total Solved: {}\n\
-             Easy Solved: {}\n\
-             Medium Solved: {}\n\
-             Hard Solved: {}\n\
-             Ranking: {}",
-            self.total_solved, self.easy_solved, self.medium_solved, self.hard_solved, self.ranking
+            "**User Stats:**\n\
+             \tEasy Solved: {}\n\
+             \tMedium Solved: {}\n\
+             \tHard Solved: {}\n\
+             \tTotal Solved: {}\n\
+             \tRanking: {}",
+            self.easy_solved, self.medium_solved, self.hard_solved, self.total_solved, self.ranking
         )
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[allow(non_snake_case)]
+#[derive(Debug)]
 pub struct Submission {
-    pub statusDisplay: String,
-    pub lang: String,
-    #[serde(deserialize_with = "string_to_usize")]
+    pub problem: Problem,
+
+    pub username: String,
+    pub language: String,
     pub timestamp: usize,
+    pub accepted: bool,
+}
+
+#[derive(Debug)]
+#[allow(non_snake_case)] // for serialization
+pub struct Problem {
     pub title: String,
+
     pub titleSlug: String,
+    pub difficulty: String,
 }
 
 fn string_to_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>
@@ -52,10 +65,10 @@ impl std::fmt::Display for Submission {
             f,
             "**Submission**: {}\n\
             https://leetcode.com/problems/{}/\n\
-            \tStatus: *{}*\n\
+            \tAccepted?: *{}*\n\
             \tTimestamp: {} \n\
             \tLanguage: `{}`",
-            self.title, self.titleSlug, self.statusDisplay, self.timestamp, self.lang
+            self.problem.title, self.problem.titleSlug, self.accepted, self.timestamp, self.language
         )
     }
 }

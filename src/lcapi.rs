@@ -29,11 +29,24 @@ pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>>
 
     match raw_submissions {
         Value::Array(submissions) => {
-            submissions
+            Ok(submissions
                 .into_iter()
-                .map(|val| serde_json::from_value::<Submission>(val.clone())
-                    .context("Couldn't deserialize values into Submissions."))
-                .collect()
+                .filter_map(|val| {
+                    let sub = Submission {
+                        problem: Problem {
+                            title: val.get("title")?.as_str()?.to_string(),
+                            titleSlug: val.get("titleSlug")?.as_str()?.to_string(),
+                            difficulty: String::from("NULL"),
+                        },
+                        username: username.to_string(),
+                        language: val.get("lang")?.as_str()?.to_string(),
+                        timestamp: val.get("timestamp")?.as_str()?.parse::<usize>().ok()?,
+                        accepted: val.get("statusDisplay")?.as_str()? == "Accepted"
+                    };
+
+                    Some(sub)
+                })
+                .collect())
         }
         Value::Null => {
             Err(anyhow!("Could not find recent submissions for user {username}."))
@@ -50,10 +63,11 @@ pub async fn fetch_recently_completed(username: &str) -> Result<Vec<Submission>>
     // Only grab the ones that were accepted
     Ok(submitted
         .into_iter()
-        .filter(|sub| sub.statusDisplay == String::from("Accepted"))
+        .filter(|sub| sub.accepted)
         .collect())
 }
 
+// i wont lie this is a hot mess
 pub async fn fetch_user(username: String) -> Result<User> {
     let response = query_user(&username).await?;
     let data = response.data.context("No data found in the response.")?;

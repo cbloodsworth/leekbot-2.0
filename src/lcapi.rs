@@ -76,7 +76,7 @@ pub async fn fetch_user(username: String) -> Result<User> {
     let user = data.get("matchedUser").and_then(|user| {
         if *user == Value::Null { None } 
         else { Some(user) }
-    }).with_context(|| format!("Could not find leetcode user: {}", username))?;
+    }).with_context(|| format!("Leetcode user {} does not exist.", username))?;
 
     // Get the number of solved problems array
     let num_solved_array = user

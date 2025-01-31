@@ -151,10 +151,12 @@ pub fn query_tracked_users() -> Result<Vec<models::User>> {
     // Preparation for the query.
     let mut stmt = connection.prepare(
             "SELECT username, easy_solved, medium_solved, hard_solved, total_solved, ranking
-             FROM Users"
+             FROM Users
+             WHERE tracked = 1"
     )?;
 
     // Query!
+    log::info!("[query_tracked_users)] Querying all tracked users.");
     let submissions = stmt
         .query_map([], |row| models::User::try_from(row))
         .context(format!("Could not find any users in the database."))?

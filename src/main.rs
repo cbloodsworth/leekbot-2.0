@@ -15,8 +15,8 @@ const MAX_CMD_LENGTH: usize = 12;
 pub struct Commands;
 /// Async command implementations
 impl Commands {
-    pub async fn run_command(input: String) -> String {
-        let input = &input[1..];
+    pub async fn run_command(ctx: &serenity::client::Context, msg: &Message) -> String {
+        let input = &String::from(&msg.content)[1..];
         let parsed = input.split_whitespace().collect::<Vec<_>>();
         let (command, parameters) = parsed.split_at(1);
         let command = command[0];  // turn a [&str] into a &str
@@ -35,14 +35,40 @@ impl Commands {
             "recent" => {
                 Self::get_recently_completed(parameters[0]).await
             }
+            "tracklist" => {
+                let mut output = String::from("**Tracked users:**");
+                let users = lcdb::query_tracked_users();
+                match users {
+                    Ok(users) => {
+                        for user in users {
+                            output += "\n\t";
+                            output += &user.username;
+                        }
+                    }
+                    Err(err) => {
+                        output = format!("Error retrieving tracklist: {err}");
+                    }
+                }
+
+                Ok(output)
+            }
             "track" => {
-                lcapi::fetch_user(String::from(parameters[0]))
+                let result = lcapi::fetch_user(String::from(parameters[0]))
                     .await
                     .and_then(|user| {
                         lcdb::track_user(&user)?;
                         Ok(user)
-                    })
-                    .map(|user| format!("Successfully tracking {}.", user.username))
+                });
+
+                match result {
+                    Ok(_) => {
+                        let _ = msg.react(&ctx.http, serenity::all::ReactionType::Unicode(String::from("✅"))).await;
+                        Ok(String::from(""))
+                    }
+                    Err(err) => {
+                        Err(anyhow!("Could not track user {}: {}", parameters[0], err))
+                    }
+                }
             }
             "untrack" => {
                 lcapi::fetch_user(String::from(parameters[0]))
@@ -98,6 +124,7 @@ r#"
 `$recent <leetcode username>`:  Get the most recent submission from a leetcode user.
 `$track <leetcode username>`:  Track a user. This will cause the bot to announce new submissions from this user.
 `$untrack <leetcode username>`:  Untrack a user.
+`$tracklist`:  Untrack a user.
 `$help`:  Get information on supported commands
 "#)
     }
@@ -120,7 +147,9 @@ impl EventHandler for LeekHandler {
 
         // Commands
         if content.starts_with("$") && content.len() > 1 {
-            let response = Commands::run_command(content).await;
+            let response = Commands::run_command(&ctx, &msg).await;
+            if response.is_empty() { return; }
+
             if let Err(why) = channel.say(&ctx.http, response).await {
                 let _ = channel.say(&ctx.http, "Oops, internal error.").await;
                 log::error!("Error sending message: {why:?}");
@@ -134,7 +163,7 @@ impl EventHandler for LeekHandler {
 /// 
 /// Intended to be run regularly.
 fn check_recent_submissions() -> Result<()> {
-    let users = lcdb::query_tracked_users();
+    let users = lcdb::query_tracked_users()?;
     todo!()
 }
 

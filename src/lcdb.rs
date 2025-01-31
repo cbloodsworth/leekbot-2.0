@@ -5,28 +5,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models;
 
-impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::Submission {
-    type Error = rusqlite::Error;
-
-    fn try_from(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
-        let problem = models::Problem {
-            title:      row.get("problem_name")?,
-            titleSlug:  row.get("problem_link")?,
-            difficulty: row.get("difficulty")?,
-        };
-
-        Ok(Self {
-            problem,
-
-            username:   row.get("username")?,
-            accepted:   row.get("accepted")?,
-            language:   row.get("language")?,
-            timestamp:  row.get("timestamp")?,
-        })
-    }
-}
-
-
 fn connect() -> Result<Connection> {
     Ok(Connection::open("leek.db")?)
 }
@@ -81,92 +59,27 @@ pub fn initialize_db() -> Result<()> {
 }
 
 
-pub fn insert_user(user: &models::User) -> Result<()> {
-    let connection = connect()?;
 
-    log::info!("[insert_user] Inserting user {} into Users...", user.username);
-    connection.prepare(
-        "INSERT INTO Users (username, 
-                            tracked, 
-                            easy_solved, 
-                            medium_solved, 
-                            hard_solved, 
-                            total_solved, 
-                            ranking)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
-    )?.execute(params![user.username, 
-                0,
-                user.easy_solved,
-                user.medium_solved,
-                user.hard_solved,
-                user.total_solved,
-                user.ranking])?;
+/////*============== SUBMISSION QUERIES ==============*/
+impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::Submission {
+    type Error = rusqlite::Error;
 
-    Ok(())
-}
+    fn try_from(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
+        let problem = models::Problem {
+            title:      row.get("problem_name")?,
+            titleSlug:  row.get("problem_link")?,
+            difficulty: row.get("difficulty")?,
+        };
 
-pub fn insert_submission(submission: &models::Submission) -> Result<()> {
-    todo!()
-}
+        Ok(Self {
+            problem,
 
-/// Tracks a user by updating the "tracked" field to true.
-///   Inserts the user if it isn't in the database already.
-pub fn track_user(user: &models::User) -> Result<()> {
-    if !user_exists(user)? { insert_user(user)?; }
-
-    let connection = connect()?;
-    connection.prepare(
-        "UPDATE Users
-         SET tracked = 1
-         WHERE username = ?
-        "
-    )?.execute(params![&user.username])?;
-
-    Ok(())
-}
-
-/// Untracks a user by updating the "tracked" field to false.
-///   Inserts the user if it isn't in the database already.
-pub fn untrack_user(user: &models::User) -> Result<()> {
-    if !user_exists(user)? { insert_user(user)?; }
-
-    let connection = connect()?;
-    connection.prepare(
-        "UPDATE Users
-         SET tracked = 0
-         WHERE username = ?
-        "
-    )?.execute(params![&user.username])?;
-
-    Ok(())
-}
-
-/// [internal] Checks if the user is in the database.
-fn user_exists(user: &models::User) -> Result<bool> {
-    let connection = connect()?;
-    let exists = connection.prepare(
-            "SELECT *
-             FROM Users
-             WHERE username = ?"
-    )?.exists(params![&user.username])?;
-
-    Ok(exists)
-}
-
-pub fn is_tracked(user: &models::User) -> Result<bool> {
-    let connection = connect()?;
-    let is_tracked = connection.prepare(&format!(
-            "SELECT *
-             FROM Users
-             WHERE username = ? and tracked = 1"
-    ))?.exists(params![&user.username])?;
-
-    Ok(is_tracked)
-}
-
-/// Gathers all tracked users.
-pub fn query_tracked_users() -> Result<Vec<models::User>> {
-    todo!()
+            username:   row.get("username")?,
+            accepted:   row.get("accepted")?,
+            language:   row.get("language")?,
+            timestamp:  row.get("timestamp")?,
+        })
+    }
 }
 
 /// Gathers all recent submissions for a user.
@@ -209,4 +122,123 @@ pub fn query_all_recent_submissions(user: &models::User) -> Result<Vec<models::S
         .collect::<Result<Vec<models::Submission>, _>>()?;
 
     Ok(submissions)
+}
+
+pub fn insert_submission(submission: &models::Submission) -> Result<()> {
+    todo!()
+}
+
+/////*============== USER QUERIES ==============*/
+impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::User {
+    type Error = rusqlite::Error;
+
+    fn try_from(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
+        Ok(Self {
+            username:      row.get("username")?,
+            easy_solved:   row.get("easy_solved")?,
+            medium_solved: row.get("medium_solved")?,
+            hard_solved:   row.get("hard_solved")?,
+            total_solved:  row.get("total_solved")?,
+            ranking:       row.get("ranking")?,
+        })
+    }
+}
+
+/// Gathers all tracked users.
+pub fn query_tracked_users() -> Result<Vec<models::User>> {
+    let connection = connect()?;
+
+    // Preparation for the query.
+    let mut stmt = connection.prepare(
+            "SELECT username, easy_solved, medium_solved, hard_solved, total_solved, ranking
+             FROM Users"
+    )?;
+
+    // Query!
+    let submissions = stmt
+        .query_map([], |row| models::User::try_from(row))
+        .context(format!("Could not find any users in the database."))?
+        .collect::<Result<Vec<models::User>, _>>()?;
+
+    Ok(submissions)
+}
+
+pub fn insert_user(user: &models::User) -> Result<()> {
+    let connection = connect()?;
+
+    log::info!("[insert_user] Inserting user {} into Users...", user.username);
+    connection.prepare(
+        "INSERT INTO Users (username, 
+                            tracked, 
+                            easy_solved, 
+                            medium_solved, 
+                            hard_solved, 
+                            total_solved, 
+                            ranking)
+         VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )?.execute(params![user.username, 
+                0,
+                user.easy_solved,
+                user.medium_solved,
+                user.hard_solved,
+                user.total_solved,
+                user.ranking])?;
+
+    Ok(())
+}
+
+/// Tracks a user by updating the "tracked" field to true.
+///   Inserts the user if it isn't in the database already.
+pub fn track_user(user: &models::User) -> Result<()> {
+    if !user_exists(user)? { insert_user(user)?; }
+
+    let connection = connect()?;
+    connection.prepare(
+        "UPDATE Users
+         SET tracked = 1
+         WHERE username = ?
+        "
+    )?.execute(params![&user.username])?;
+
+    Ok(())
+}
+
+/// Untracks a user by updating the "tracked" field to false.
+///   Inserts the user if it isn't in the database already.
+pub fn untrack_user(user: &models::User) -> Result<()> {
+    if !user_exists(user)? { insert_user(user)?; }
+
+    let connection = connect()?;
+    connection.prepare(
+        "UPDATE Users
+         SET tracked = 0
+         WHERE username = ?
+        "
+    )?.execute(params![&user.username])?;
+
+    Ok(())
+}
+
+/// Return whether a user is being tracked.
+pub fn is_tracked(user: &models::User) -> Result<bool> {
+    let connection = connect()?;
+    let is_tracked = connection.prepare(&format!(
+            "SELECT *
+             FROM Users
+             WHERE username = ? and tracked = 1"
+    ))?.exists(params![&user.username])?;
+
+    Ok(is_tracked)
+}
+
+/// [internal] Checks if the user is in the database.
+fn user_exists(user: &models::User) -> Result<bool> {
+    let connection = connect()?;
+    let exists = connection.prepare(
+            "SELECT *
+             FROM Users
+             WHERE username = ?"
+    )?.exists(params![&user.username])?;
+
+    Ok(exists)
 }

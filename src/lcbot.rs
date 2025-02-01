@@ -5,6 +5,7 @@ use serenity::prelude::*;
 
 use chrono::{Utc, Timelike};
 
+use std::time::Duration as StdDuration;
 use tokio::time::{sleep, Duration, Instant};
 
 use dotenv::dotenv;
@@ -12,12 +13,13 @@ use std::env;
 
 use crate::lcapi;
 use crate::lcdb;
+use crate::models;
 
 
 use anyhow::{Result, Context, anyhow};
 
 const MAX_CMD_LENGTH: usize = 12;
-const ANNOUNCEMENTS_CHANNEL_ID: u64 = 1335276868215115906;
+const ANNOUNCEMENTS_CHANNEL_ID: u64 = 1335351689255063790;
 
 pub async fn run_leekbot() -> Result<()> {
     // Load discord bot token
@@ -159,13 +161,28 @@ r#"
     }
 }
 
-/// Checks recent Leetcode submissions for all tracked users and sends
-///   any new submissions to Discord.
+/// Checks recent Leetcode submissions for all tracked users,
+///   compares with the ones represented in the recency cache,
+///   and returns the ones that should be announced.
 /// 
-/// Intended to be run regularly.
-fn check_recent_submissions() -> Result<()> {
-    let users = lcdb::query_tracked_users()?;
-    todo!()
+/// Intended to be run regularly. 
+/// Interfaces with all three modules: discord, leetcode API, database.
+async fn check_recent_submissions() -> Result<Vec<models::Submission>> {
+    let mut result = Vec::new();
+    for user in lcdb::query_tracked_users()? {
+        // Update database
+        log::info!("[lcbot] Fetching recent problems for {}", user.username);
+        let recent_submissions = lcapi::fetch_recently_submitted(&user.username).await?;
+        for submission in recent_submissions {
+            lcdb::insert_submission(&submission)?;
+            lcdb::insert_problem(&submission.problem)?;
+        }
+
+        // Perform the query
+        result.extend(lcdb::query_uncached_submissions(&user)?);
+    }
+
+    Ok(result)
 }
 
 async fn sleep_until_midnight_utc() {
@@ -184,22 +201,55 @@ async fn sleep_until_midnight_utc() {
     sleep(sleep_duration).await;
 }
 
+fn submission_announcement(submission: &models::Submission) -> String {
+    format!("{} just completed {}!\n\thttps://leetcode.com/problems/{}",
+        submission.username,
+        submission.problem.title,
+        submission.problem.titleSlug)
+}
+
 
 struct LeekHandler;
 #[async_trait]
 impl EventHandler for LeekHandler {
     async fn ready(&self, ctx: serenity::client::Context, _ready: Ready) {
         log::info!("Bot is connected and ready!");
+        let channel_id = ANNOUNCEMENTS_CHANNEL_ID;
 
+        let daily_checker_ctx = ctx.clone();
         tokio::spawn(async move {
-            let channel_id = ANNOUNCEMENTS_CHANNEL_ID;
             loop {
                 sleep_until_midnight_utc().await;
                 if let Err(err) = serenity::model::id::ChannelId::new(channel_id)
-                    .say(&ctx.http, "This runs at 7:00PM every day!")
+                    .say(&daily_checker_ctx.http, "This runs at 7:00PM every day!")
                     .await
                 {
                     log::error!("Error sending scheduled message: {:?}", err);
+                }
+            }
+        });
+
+        let recent_checker_ctx = ctx.clone();
+        tokio::spawn(async move {
+            const RECENT_TIME_INTERVAL_SECS: u64 = 15; // 15 seconds
+            let mut interval = tokio::time::interval(StdDuration::from_secs(RECENT_TIME_INTERVAL_SECS));
+            loop {
+                interval.tick().await;
+
+                match check_recent_submissions().await {
+                    Ok(new_submissions) => {
+                        for submission in new_submissions {
+                            if let Err(err) = serenity::model::id::ChannelId::new(channel_id)
+                                .say(&recent_checker_ctx.http, submission_announcement(&submission))
+                                .await
+                            {
+                                log::error!("Error sending scheduled message: {}", err);
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        log::error!("Error checking recent submissions: {}", err);
+                    }
                 }
             }
         });

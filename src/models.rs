@@ -3,7 +3,7 @@ use serde::de::{self, Deserializer};
 
 use std::time::Duration;
 
-// Threshold for a problem to be considered recent is 8 hours, or 28800 seconds
+// Threshold for a problem to be considered 'recent' is 8 hours, or 28800 seconds
 pub const RECENT_THRESHOLD: usize = Duration::new(28800, 0).as_millis() as usize;
 
 #[derive(Debug, Clone)]

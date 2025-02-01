@@ -40,7 +40,7 @@ pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>>
                         },
                         username: username.to_string(),
                         language: val.get("lang")?.as_str()?.to_string(),
-                        timestamp: val.get("timestamp")?.as_str()?.parse::<usize>().ok()?,
+                        timestamp: val.get("timestamp")?.as_str()?.parse::<usize>().ok()? * 1000,
                         accepted: val.get("statusDisplay")?.as_str()? == "Accepted"
                     };
 

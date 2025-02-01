@@ -1,4 +1,5 @@
 use leekbot::lcdb;
+use leekbot::lcapi;
 use leekbot::lcbot;
 
 use anyhow::Context;
@@ -15,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     lcdb::initialize_db()
         .context("Error initializing database.")
         .unwrap();
-    
+
     // Run the discord bot
     lcbot::run_leekbot()
         .await

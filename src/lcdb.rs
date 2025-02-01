@@ -1,4 +1,5 @@
 use anyhow::{Result, Context};
+use reqwest::header::Keys;
 use rusqlite::{params, Connection};
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -48,9 +49,23 @@ pub fn initialize_db() -> Result<()> {
     connect()?.execute(
         "CREATE TABLE IF NOT EXISTS Problems (
             problem_name   TEXT        PRIMARY KEY,
-
             problem_link   TEXT        NOT NULL,
-            difficulty     TEXT        NOT NULL
+            difficulty     TEXT        NOT NULL,
+
+            UNIQUE(problem_name, problem_link, difficulty)
+        )",
+        []
+    )?;
+
+    // Recent Submission Cache
+    log::debug!("[initialize_db] creating RecentCache table...");
+    connect()?.execute(
+        "CREATE TABLE IF NOT EXISTS RecentCache (
+            problem_name   TEXT        NOT NULL    REFERENCES Problems(problem_name),
+            username       TEXT        NOT NULL    REFERENCES Users(username),
+            timestamp      TIMESTAMP   NOT NULL,
+
+            UNIQUE (problem_name, username)
         )",
         []
     )?;
@@ -83,7 +98,7 @@ impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::Submission {
 }
 
 /// Gathers all recent submissions for a user.
-pub fn query_all_recent_submissions(user: &models::User) -> Result<Vec<models::Submission>> {
+pub fn query_submissions_recent_all(user: &models::User) -> Result<Vec<models::Submission>> {
     let connection = connect()?;
     let username = &user.username;
 
@@ -125,8 +140,126 @@ pub fn query_all_recent_submissions(user: &models::User) -> Result<Vec<models::S
 }
 
 pub fn insert_submission(submission: &models::Submission) -> Result<()> {
-    todo!()
+    let connection = connect()?;
+
+    log::info!("[insert_submission] Inserting submission into Submissions...");
+
+    let query_params = rusqlite::named_params! {
+            ":problem_name": submission.problem.title, 
+            ":username":     submission.username,
+            ":language":     submission.language, 
+            ":timestamp":    submission.timestamp, 
+            ":accepted":     submission.accepted, 
+    };
+
+    connection.prepare(
+        "INSERT INTO Submissions ( problem_name,  username,  language,  timestamp,  accepted)
+         VALUES                  (:problem_name, :username, :language, :timestamp, :accepted)"
+    )?.execute(query_params)?;
+
+    Ok(())
 }
+
+
+
+/////*============== RECENT CACHE QUERIES ==============*/
+
+/// Queries the database for (accepted) submissions that haven't already been announced to the server.
+pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Submission>> {
+    let connection = connect()?;
+
+    // Get the current timestamp, approximately
+    let current_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("Time went backwards????")?
+        .as_millis() as usize;
+
+    // Parameters for our query. We're mainly trying to only grab submissions
+    // that have been posted in the last `models::RECENT_THRESHOLD` seconds.
+    let query_params = rusqlite::named_params! {
+            ":username": &user.username, 
+            ":current_timestamp": current_timestamp, 
+            ":recent_threshold": models::RECENT_THRESHOLD
+    };
+
+    // Preparation for the query.
+    let mut stmt = connection.prepare(
+            "SELECT s.username, s.timestamp, s.accepted, s.language,
+                    p.problem_name, p.problem_link, p.difficulty
+             FROM Submissions s
+             JOIN Problems p ON s.problem_name = p.problem_name
+             WHERE s.username = :username
+               and :current_timestamp - s.timestamp < :recent_threshold
+               and NOT EXISTS (
+                 SELECT 1 
+                 FROM RecentCache r 
+                 WHERE r.problem_name = s.problem_name
+                   and r.username = s.username
+               )
+             ORDER BY s.timestamp DESC"
+    )?;
+
+    let submissions = stmt
+        .query_map(query_params, |row| models::Submission::try_from(row))
+        .context(format!("No recent submissions...?"))?  // This might not be the right error msg
+        .collect::<Result<Vec<models::Submission>, _>>()?;
+
+    // Keep our new cache updated
+    log::info!("[query_submissions_new] Updating submissions cache...");
+    for submission in submissions.iter() {
+        insert_cache_submission(submission)?;
+    }
+
+    Ok(submissions)
+}
+
+/// Adds the (problem, user) entry into the recent cache if it doesn't exist.
+pub fn insert_cache_submission(submission: &models::Submission) -> Result<()> {
+    let connection = connect()?;
+
+    let query_params = rusqlite::named_params! {
+            ":username": &submission.username, 
+            ":problem_name": &submission.problem.title,
+            ":timestamp": &submission.timestamp,
+    };
+
+    // Preparation for the query.
+    log::debug!("[insert_cache_submission] caching submission...");
+    connection.prepare(
+            "INSERT OR IGNORE INTO RecentCache (username, problem_name, timestamp)
+             VALUES (:username, :problem_name, :timestamp)"
+    )?.execute(query_params)?;
+
+    Ok(())
+}
+
+/// Cleans the cache and returns the removed submissions.
+pub fn clean_cache() -> Result<()> {
+    let connection = connect()?;
+
+    // Get the current timestamp, approximately
+    let current_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("Time went backwards????")?
+        .as_millis() as usize;
+
+    // Parameters for our query. We're mainly trying to only grab submissions
+    // that have been posted in the last `models::RECENT_THRESHOLD` milliseconds.
+    let query_params = rusqlite::named_params! {
+            ":current_timestamp": current_timestamp, 
+            ":recent_threshold": models::RECENT_THRESHOLD
+    };
+
+    // Preparation for the query.
+    connection.prepare(
+            "DELETE FROM RecentCache
+             WHERE :current_timestamp - timestamp > :recent_threshold"
+    )?.execute(query_params)?;
+
+    Ok(())
+}
+
+
 
 /////*============== USER QUERIES ==============*/
 impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::User {
@@ -169,22 +302,21 @@ pub fn insert_user(user: &models::User) -> Result<()> {
     let connection = connect()?;
 
     log::info!("[insert_user] Inserting user {} into Users...", user.username);
+
+    let query_params = rusqlite::named_params! {
+            ":username":      user.username,
+            ":tracked":       0,
+            ":easy_solved":   user.easy_solved,
+            ":medium_solved": user.medium_solved,
+            ":hard_solved":   user.hard_solved,
+            ":total_solved":  user.total_solved,
+            ":ranking":       user.ranking, 
+    };
+
     connection.prepare(
-        "INSERT INTO Users (username, 
-                            tracked, 
-                            easy_solved, 
-                            medium_solved, 
-                            hard_solved, 
-                            total_solved, 
-                            ranking)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
-    )?.execute(params![user.username, 
-                0,
-                user.easy_solved,
-                user.medium_solved,
-                user.hard_solved,
-                user.total_solved,
-                user.ranking])?;
+        "INSERT INTO Users ( username,  tracked,  easy_solved,  medium_solved,  hard_solved,  total_solved,  ranking)
+         VALUES            (:username, :tracked, :easy_solved, :medium_solved, :hard_solved, :total_solved, :ranking)"
+    )?.execute(query_params)?;
 
     Ok(())
 }
@@ -233,6 +365,31 @@ pub fn is_tracked(user: &models::User) -> Result<bool> {
     Ok(is_tracked)
 }
 
+
+
+/////*============== PROBLEM QUERIES ==============*/
+pub fn insert_problem(problem: &models::Problem) -> Result<()> {
+    let connection = connect()?;
+
+    log::info!("[insert_problem] Inserting problem {} into Problems...", problem.title);
+
+    let query_params = rusqlite::named_params! {
+            ":problem_name": problem.title,
+            ":problem_link": format!("https://leetcode.com/problems/{}", problem.titleSlug),
+            ":difficulty":   problem.difficulty
+    };
+
+    connection.prepare(
+        "INSERT OR IGNORE INTO Problems ( problem_name,  problem_link,  difficulty)
+         VALUES                         (:problem_name, :problem_link, :difficulty)"
+    )?.execute(query_params)?;
+
+    Ok(())
+}
+
+
+
+/////*============== INTERNAL API ==============*/
 /// [internal] Checks if the user is in the database.
 fn user_exists(user: &models::User) -> Result<bool> {
     let connection = connect()?;

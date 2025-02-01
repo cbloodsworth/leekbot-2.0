@@ -1,22 +1,14 @@
-
-use leekbot::lcapi;
 use leekbot::lcdb;
 use leekbot::lcbot;
 
-use anyhow::{Result, Context};
+use anyhow::Context;
+use dotenv::dotenv;
 
-/// Checks recent Leetcode submissions for all tracked users and sends
-///   any new submissions to Discord.
-/// 
-/// Intended to be run regularly.
-fn check_recent_submissions() -> Result<()> {
-    let users = lcdb::query_tracked_users()?;
-    todo!()
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Begin logger
+    dotenv().ok();
     env_logger::Builder::from_env("LOG_LEVEL").init();
 
     // Initialize database

@@ -1,16 +1,23 @@
 use serenity::async_trait;
 use serenity::model::channel::Message;
+use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 
-use crate::lcapi;
-use crate::lcdb;
+use chrono::{Utc, Timelike};
+
+use tokio::time::{sleep, Duration, Instant};
 
 use dotenv::dotenv;
 use std::env;
 
+use crate::lcapi;
+use crate::lcdb;
+
+
 use anyhow::{Result, Context, anyhow};
 
 const MAX_CMD_LENGTH: usize = 12;
+const ANNOUNCEMENTS_CHANNEL_ID: u64 = 1335276868215115906;
 
 pub async fn run_leekbot() -> Result<()> {
     // Load discord bot token
@@ -152,10 +159,51 @@ r#"
     }
 }
 
+/// Checks recent Leetcode submissions for all tracked users and sends
+///   any new submissions to Discord.
+/// 
+/// Intended to be run regularly.
+fn check_recent_submissions() -> Result<()> {
+    let users = lcdb::query_tracked_users()?;
+    todo!()
+}
+
+async fn sleep_until_midnight_utc() {
+    const TARGET_HOUR: u32 = 0; // 00:00 UTC (midnight)
+    let now = Utc::now();
+
+    let now_minutes = now.hour() * 60 + now.minute();
+    let target_minutes = TARGET_HOUR * 60;
+
+    // Calculate minutes to wait until the next midnight
+    let mins_to_wait = (24 * 60 - now_minutes) + target_minutes;
+
+    let sleep_duration = Duration::from_secs((mins_to_wait * 60) as u64);
+    log::info!("Next announcement in {} minutes.", sleep_duration.as_secs() / 60);
+
+    sleep(sleep_duration).await;
+}
+
 
 struct LeekHandler;
 #[async_trait]
 impl EventHandler for LeekHandler {
+    async fn ready(&self, ctx: serenity::client::Context, _ready: Ready) {
+        log::info!("Bot is connected and ready!");
+
+        tokio::spawn(async move {
+            let channel_id = ANNOUNCEMENTS_CHANNEL_ID;
+            loop {
+                sleep_until_midnight_utc().await;
+                if let Err(err) = serenity::model::id::ChannelId::new(channel_id)
+                    .say(&ctx.http, "This runs at 7:00PM every day!")
+                    .await
+                {
+                    log::error!("Error sending scheduled message: {:?}", err);
+                }
+            }
+        });
+    }
     async fn message(&self, ctx: serenity::client::Context, msg: Message) {
         let channel = msg.channel_id;
         let content = msg.content.clone();

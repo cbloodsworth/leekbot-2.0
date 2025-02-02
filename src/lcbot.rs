@@ -19,7 +19,27 @@ use crate::models;
 use anyhow::{Result, Context, anyhow};
 
 const MAX_CMD_LENGTH: usize = 12;
-const ANNOUNCEMENTS_CHANNEL_ID: u64 = 1335351689255063790;
+
+/// Get the announcements channel ID. May panic.
+fn getenv_announcements_channel() -> u64 {
+    env::var("ANNOUNCEMENTS_CHANNEL_ID")
+        .expect(".env file does not contain 'ANNOUNCEMENTS_CHANNEL_ID.")
+        .parse()
+        .expect("'ANNOUNCEMENTS_CHANNEL_ID should be parseable into a u64.")
+}
+
+/// Get the call token. May panic.
+fn getenv_call_token() -> char {
+    let env_token = env::var("BOT_CALL_TOKEN")
+        .unwrap_or(String::from("$"));
+
+    let token = env_token.chars().next().expect("BOT_CALL_TOKEN is empty.");
+    if env_token.len() > 1 { 
+        log::warn!("$BOT_CALL_TOKEN not a single character. Truncating to {}", token);
+    }
+
+    token
+}
 
 pub async fn run_leekbot() -> Result<()> {
     // Load discord bot token
@@ -214,7 +234,7 @@ struct LeekHandler;
 impl EventHandler for LeekHandler {
     async fn ready(&self, ctx: serenity::client::Context, _ready: Ready) {
         log::info!("Bot is connected and ready!");
-        let channel_id = ANNOUNCEMENTS_CHANNEL_ID;
+        let channel_id = getenv_announcements_channel();
 
         let daily_checker_ctx = ctx.clone();
         tokio::spawn(async move {
@@ -231,7 +251,7 @@ impl EventHandler for LeekHandler {
 
         let recent_checker_ctx = ctx.clone();
         tokio::spawn(async move {
-            const RECENT_TIME_INTERVAL_SECS: u64 = 15; // 15 seconds
+            const RECENT_TIME_INTERVAL_SECS: u64 = 3 * 60; // 3 minute cooldown between checks
             let mut interval = tokio::time::interval(StdDuration::from_secs(RECENT_TIME_INTERVAL_SECS));
             loop {
                 interval.tick().await;
@@ -266,7 +286,7 @@ impl EventHandler for LeekHandler {
         }
 
         // Commands
-        if content.starts_with("$") && content.len() > 1 {
+        if content.starts_with(getenv_call_token()) && content.len() > 1 {
             let response = match Commands::run_command(&ctx, &msg).await {
                 Ok(message) => { message }
                 Err(err) => { format!("Error: {}", err) }

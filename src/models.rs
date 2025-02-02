@@ -16,6 +16,8 @@ pub struct User {
     pub total_solved: u64,
 
     pub ranking: u64,
+
+    pub streak: u64,
 }
 
 impl std::fmt::Display for User {
@@ -27,8 +29,9 @@ impl std::fmt::Display for User {
              \tMedium Solved: {}\n\
              \tHard Solved: {}\n\
              \tTotal Solved: {}\n\
-             \tRanking: {}",
-            self.easy_solved, self.medium_solved, self.hard_solved, self.total_solved, self.ranking
+             \tRanking: {}\n\
+             \tStreak: {}",
+            self.easy_solved, self.medium_solved, self.hard_solved, self.total_solved, self.ranking, self.streak
         )
     }
 }

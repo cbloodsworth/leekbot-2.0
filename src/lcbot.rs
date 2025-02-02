@@ -205,6 +205,25 @@ async fn check_recent_submissions() -> Result<Vec<models::Submission>> {
     Ok(result)
 }
 
+async fn streak_handler(ctx: &serenity::client::Context, channel_id: u64) -> Result<()> {
+    let channel = serenity::model::id::ChannelId::new(channel_id);
+    for user in lcdb::query_tracked_users()? {
+        let active = lcdb::is_active(&user)?;
+        let streak = lcdb::query_streak(&user)?;
+        if active {
+            lcdb::streak_increment(&user)?;
+            channel.say(&ctx.http, 
+                format!("{} is on a roll with a streak of {}!", &user.username, streak+1)).await?;
+        }
+        else if streak > 0 {
+            lcdb::streak_break(&user)?;
+            channel.say(&ctx.http, format!("{} lost their streak!", &user.username)).await?;
+        }
+    }
+
+    Ok(())
+}
+
 async fn sleep_until_midnight_utc() {
     const TARGET_HOUR: u32 = 0; // 00:00 UTC (midnight)
     let now = Utc::now();
@@ -240,11 +259,8 @@ impl EventHandler for LeekHandler {
         tokio::spawn(async move {
             loop {
                 sleep_until_midnight_utc().await;
-                if let Err(err) = serenity::model::id::ChannelId::new(channel_id)
-                    .say(&daily_checker_ctx.http, "This runs at 7:00PM every day!")
-                    .await
-                {
-                    log::error!("Error sending scheduled message: {:?}", err);
+                if let Err(err) = streak_handler(&daily_checker_ctx, channel_id).await {
+                    log::error!("Error sending scheduled message: {}", err);
                 }
             }
         });

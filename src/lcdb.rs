@@ -23,7 +23,8 @@ pub fn initialize_db() -> Result<()> {
             hard_solved    INTEGER     NOT NULL,
             total_solved   INTEGER     NOT NULL,
 
-            ranking        INTEGER     NOT NULL
+            ranking        INTEGER     NOT NULL,
+            streak         INTEGER     NOT NULL
         )",
         []
     )?;
@@ -274,6 +275,7 @@ impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::User {
             hard_solved:   row.get("hard_solved")?,
             total_solved:  row.get("total_solved")?,
             ranking:       row.get("ranking")?,
+            streak:        row.get("streak")?,
         })
     }
 }
@@ -284,7 +286,7 @@ pub fn query_tracked_users() -> Result<Vec<models::User>> {
 
     // Preparation for the query.
     let mut stmt = connection.prepare(
-            "SELECT username, easy_solved, medium_solved, hard_solved, total_solved, ranking
+            "SELECT username, easy_solved, medium_solved, hard_solved, total_solved, ranking, streak
              FROM Users
              WHERE tracked = 1"
     )?;
@@ -312,11 +314,12 @@ pub fn insert_user(user: &models::User) -> Result<()> {
             ":hard_solved":   user.hard_solved,
             ":total_solved":  user.total_solved,
             ":ranking":       user.ranking, 
+            ":streak":        user.streak, 
     };
 
     connection.prepare(
-        "INSERT INTO Users ( username,  tracked,  easy_solved,  medium_solved,  hard_solved,  total_solved,  ranking)
-         VALUES            (:username, :tracked, :easy_solved, :medium_solved, :hard_solved, :total_solved, :ranking)"
+        "INSERT INTO Users ( username,  tracked,  easy_solved,  medium_solved,  hard_solved,  total_solved,  ranking,  streak)
+         VALUES            (:username, :tracked, :easy_solved, :medium_solved, :hard_solved, :total_solved, :ranking, :streak)"
     )?.execute(query_params)?;
 
     Ok(())
@@ -366,7 +369,61 @@ pub fn is_tracked(user: &models::User) -> Result<bool> {
     Ok(is_tracked)
 }
 
+/// Return whether a user has completed a problem in the last day.
+pub fn is_active(user: &models::User) -> Result<bool> {
+    let connection = connect()?;
 
+    // Get the current timestamp, approximately
+    let current_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("Time went backwards????")?
+        .as_millis() as usize;
+
+    const DAY_IN_MILLIS: u64 = 86_400_000;
+    let query_params = rusqlite::named_params! {
+            ":username":      user.username,
+            ":current_timestamp": current_timestamp,
+            ":DAY_IN_MILLIS": DAY_IN_MILLIS,
+    };
+
+    let is_tracked = connection.prepare(&format!(
+            "SELECT 1
+             FROM Users u
+             JOIN Submissions s ON s.username = u.username
+             WHERE u.username = :username 
+               and u.tracked = 1
+               and :current_timestamp - s.timestamp < :DAY_IN_MILLIS"
+    ))?.exists(query_params)?;
+
+    Ok(is_tracked)
+}
+
+pub fn streak_increment(user: &models::User) -> Result<()> {
+    let connection = connect()?;
+    connection.prepare( "UPDATE Users 
+                         SET streak = streak + 1 
+                         WHERE username = ?")?
+        .execute(params![&user.username])?;
+
+    Ok(())
+}
+
+pub fn query_streak(user: &models::User) -> Result<u64> {
+    let connection = connect()?;
+    let mut stmt = connection.prepare( "SELECT streak FROM Users WHERE username = ?")?;
+    Ok(stmt.query_row(params![&user.username], |row| row.get("streak"))?)
+}
+
+// Breaks the user's streak.
+pub fn streak_break(user: &models::User) -> Result<()> {
+    let connection = connect()?;
+    connection.prepare( "UPDATE Users 
+                         SET streak = 0
+                         WHERE username = ?")?
+        .execute(params![&user.username])?;
+
+    Ok(())
+}
 
 /////*============== PROBLEM QUERIES ==============*/
 pub fn insert_problem(problem: &models::Problem) -> Result<()> {

@@ -190,6 +190,7 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
              JOIN Problems p ON s.problem_name = p.problem_name
              WHERE s.username = :username
                and :current_timestamp - s.timestamp < :recent_threshold
+               and s.accepted = 1
                and NOT EXISTS (
                  SELECT 1 
                  FROM RecentCache r 

@@ -47,11 +47,9 @@ pub struct Submission {
 }
 
 #[derive(Debug)]
-#[allow(non_snake_case)] // for serialization
 pub struct Problem {
     pub title: String,
-
-    pub titleSlug: String,
+    pub url: String,
     pub difficulty: String,
 }
 
@@ -65,7 +63,7 @@ impl std::fmt::Display for Submission {
             \tURL:       {} \n\
             \tTimestamp: {} \n\
             \tLanguage: `{}`",
-            self.problem.title, self.problem.titleSlug, 
+            self.problem.title, self.problem.url, 
             self.url,
             self.accepted, 
             DateTime::from_timestamp(self.timestamp as i64, 0).unwrap_or_default(),

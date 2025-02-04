@@ -66,8 +66,9 @@ pub fn initialize_db() -> Result<()> {
             problem_name   TEXT        NOT NULL    REFERENCES Problems(problem_name),
             username       TEXT        NOT NULL    REFERENCES Users(username),
             timestamp      TIMESTAMP   NOT NULL,
+            accepted       BOOLEAN     NOT NULL,
 
-            UNIQUE (problem_name, username)
+            UNIQUE (problem_name, username, timestamp, accepted)
         )",
         []
     )?;
@@ -84,7 +85,7 @@ impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::Submission {
     fn try_from(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
         let problem = models::Problem {
             title:      row.get("problem_name")?,
-            titleSlug:  row.get("problem_link")?,
+            url:        row.get("problem_link")?,
             difficulty: row.get("difficulty")?,
         };
 
@@ -146,7 +147,7 @@ pub fn query_submissions_recent_all(user: &models::User) -> Result<Vec<models::S
 pub fn insert_submission(submission: &models::Submission) -> Result<()> {
     let connection = connect()?;
 
-    log::info!("[insert_submission] Inserting submission into Submissions...");
+    log::debug!("[insert_submission] Inserting submission into Submissions...");
 
     let query_params = rusqlite::named_params! {
             ":problem_name":   submission.problem.title, 
@@ -195,7 +196,6 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
              JOIN Problems p ON s.problem_name = p.problem_name
              WHERE s.username = :username
                and :current_timestamp - s.timestamp < :recent_threshold
-               and s.accepted = 1
                and NOT EXISTS (
                  SELECT 1 
                  FROM RecentCache r 
@@ -227,13 +227,14 @@ pub fn insert_cache_submission(submission: &models::Submission) -> Result<()> {
             ":username": &submission.username, 
             ":problem_name": &submission.problem.title,
             ":timestamp": &submission.timestamp,
+            ":accepted": &submission.accepted,
     };
 
     // Preparation for the query.
     log::debug!("[insert_cache_submission] caching submission...");
     connection.prepare(
-            "INSERT OR IGNORE INTO RecentCache (username, problem_name, timestamp)
-             VALUES (:username, :problem_name, :timestamp)"
+            "INSERT OR IGNORE INTO RecentCache (username, problem_name, timestamp, accepted)
+             VALUES (:username, :problem_name, :timestamp, :accepted)"
     )?.execute(query_params)?;
 
     Ok(())
@@ -396,6 +397,7 @@ pub fn is_active(user: &models::User) -> Result<bool> {
              JOIN Submissions s ON s.username = u.username
              WHERE u.username = :username 
                and u.tracked = 1
+               and s.accepted = 1
                and :current_timestamp - s.timestamp < :DAY_IN_MILLIS"
     )?.exists(query_params)?;
 
@@ -433,11 +435,11 @@ pub fn streak_break(user: &models::User) -> Result<()> {
 pub fn insert_problem(problem: &models::Problem) -> Result<()> {
     let connection = connect()?;
 
-    log::info!("[insert_problem] Inserting problem {} into Problems...", problem.title);
+    log::debug!("[insert_problem] Inserting problem {} into Problems...", problem.title);
 
     let query_params = rusqlite::named_params! {
             ":problem_name": problem.title,
-            ":problem_link": format!("https://leetcode.com/problems/{}", problem.titleSlug),
+            ":problem_link": format!("https://leetcode.com/problems/{}", problem.url),
             ":difficulty":   problem.difficulty
     };
 

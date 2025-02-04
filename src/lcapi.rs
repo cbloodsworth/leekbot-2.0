@@ -34,7 +34,7 @@ pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>>
                 .filter_map(|val| {
                     let problem = Problem {
                         title: val.get("title")?.as_str()?.to_string(),
-                        titleSlug: val.get("titleSlug")?.as_str()?.to_string(),
+                        url: val.get("titleSlug")?.as_str()?.to_string(),
                         difficulty: String::from("NULL"),
                     };
                     let sub = Submission {
@@ -44,7 +44,7 @@ pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>>
                         accepted: val.get("statusDisplay")?.as_str()? == "Accepted",
                         url: {
                             format!("https://leetcode.com/problems/{}/submissions/{}/", 
-                                problem.titleSlug.clone(),
+                                problem.url.clone(),
                                 val.get("id")?.as_str()?
                             )
                         },

@@ -1,3 +1,4 @@
+use rand::seq::IndexedRandom;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
@@ -15,6 +16,8 @@ use crate::lcapi;
 use crate::lcdb;
 use crate::models;
 
+use rand::seq::SliceRandom;
+use rand::rng;
 
 use anyhow::{Result, Context, anyhow};
 
@@ -240,10 +243,60 @@ async fn sleep_until_midnight_utc() {
 }
 
 fn submission_announcement(submission: &models::Submission) -> String {
-    format!("{} just completed {}!\n\t{}",
-        submission.username,
-        submission.problem.title,
-        submission.url)
+    if submission.accepted {
+        format!("✅ {} just completed [{}]({})!\n\t{}",
+            submission.username,
+            submission.problem.title,
+            submission.problem.url,
+            submission.url)
+    }
+    else {
+        format!("❌ {} just submitted an attempt for [{}]({}), but {}\n\t{}",
+            submission.username,
+            submission.problem.title,
+            submission.problem.url,
+            generate_misattempt_msg(),
+            submission.url)
+    }
+}
+
+fn generate_misattempt_msg() -> String {
+    // In the format of "They tried, but {first} {second}"
+    let first = [
+        "they missed the mark.",
+        "they flubbed it.",
+        "didn't quite make it.",
+        "no cigar.",
+        "they need to try again.",
+        "didn't get it.",
+        "didn't succeed.",
+        "they clank'd it up.",
+        "they missed a few cases.",
+        "they got caught by the edge cases.",
+        "they might have missed a case.",
+    ];
+
+    let second = [
+        "Try again!",
+        "Keep trying!",
+        "Do you think they'll make it?",
+        "I wonder if they'll give up...",
+        "Oops...",
+        "Ouch.",
+        "Maybe stick to writing React components?",
+        "Scratch might be more your speed...",
+        "Are they cooked?",
+        "And you say I'm the clanker...",
+        "A horrible performance, really.",
+        "Wow."
+    ];
+
+    let mut rng = rng();
+    format!("{} {}",
+        first.choose(&mut rng).unwrap_or(&"they borked it."),
+        second.choose(&mut rng).unwrap_or(&"")
+    )
+        
 }
 
 

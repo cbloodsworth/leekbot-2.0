@@ -1,5 +1,4 @@
 use leekbot::lcdb;
-use leekbot::lcapi;
 use leekbot::lcbot;
 
 use anyhow::Context;

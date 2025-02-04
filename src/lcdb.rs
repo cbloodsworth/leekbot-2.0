@@ -1,5 +1,4 @@
 use anyhow::{Result, Context};
-use reqwest::header::Keys;
 use rusqlite::{params, Connection};
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -203,7 +202,7 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
 
     let submissions = stmt
         .query_map(query_params, |row| models::Submission::try_from(row))
-        .context(format!("No recent submissions...?"))?  // This might not be the right error msg
+        .context("No recent submissions...?")?  // This might not be the right error msg
         .collect::<Result<Vec<models::Submission>, _>>()?;
 
     // Keep our new cache updated
@@ -295,7 +294,7 @@ pub fn query_tracked_users() -> Result<Vec<models::User>> {
     log::info!("[query_tracked_users)] Querying all tracked users.");
     let submissions = stmt
         .query_map([], |row| models::User::try_from(row))
-        .context(format!("Could not find any users in the database."))?
+        .context("Could not find any users in the database.")?
         .collect::<Result<Vec<models::User>, _>>()?;
 
     Ok(submissions)
@@ -360,11 +359,11 @@ pub fn untrack_user(user: &models::User) -> Result<()> {
 /// Return whether a user is being tracked.
 pub fn is_tracked(user: &models::User) -> Result<bool> {
     let connection = connect()?;
-    let is_tracked = connection.prepare(&format!(
-            "SELECT *
-             FROM Users
-             WHERE username = ? and tracked = 1"
-    ))?.exists(params![&user.username])?;
+    let is_tracked = connection.prepare(
+        "SELECT *
+         FROM Users
+         WHERE username = ? and tracked = 1"
+    )?.exists(params![&user.username])?;
 
     Ok(is_tracked)
 }
@@ -386,14 +385,14 @@ pub fn is_active(user: &models::User) -> Result<bool> {
             ":DAY_IN_MILLIS": DAY_IN_MILLIS,
     };
 
-    let is_tracked = connection.prepare(&format!(
+    let is_tracked = connection.prepare(
             "SELECT 1
              FROM Users u
              JOIN Submissions s ON s.username = u.username
              WHERE u.username = :username 
                and u.tracked = 1
                and :current_timestamp - s.timestamp < :DAY_IN_MILLIS"
-    ))?.exists(query_params)?;
+    )?.exists(query_params)?;
 
     Ok(is_tracked)
 }

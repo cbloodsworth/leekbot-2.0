@@ -30,7 +30,7 @@ pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>>
     match raw_submissions {
         Value::Array(submissions) => {
             Ok(submissions
-                .into_iter()
+                .iter()
                 .filter_map(|val| {
                     let sub = Submission {
                         problem: Problem {
@@ -121,8 +121,8 @@ async fn query_user(username: &str) -> Result<QueryResponse> {
 }
 
 fn read_query_from_file(path: &str) -> Result<String> {
-    Ok(fs::read_to_string(path)
-        .with_context(|| format!("No such file or directory: {}", path))?)
+    fs::read_to_string(path)
+        .with_context(|| format!("No such file or directory: {}", path))
 }
 
 /// Returns an error message for when a JSON attribute can't be obtained.

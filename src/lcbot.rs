@@ -6,7 +6,7 @@ use serenity::prelude::*;
 use chrono::{Utc, Timelike};
 
 use std::time::Duration as StdDuration;
-use tokio::time::{sleep, Duration, Instant};
+use tokio::time::{sleep, Duration};
 
 use dotenv::dotenv;
 use std::env;
@@ -73,8 +73,7 @@ impl Commands {
         // Execute the command
         let result: String = match command {
             "audit" => {
-                let username = parameters
-                    .get(0).context("Expected username for audit, got none.")?
+                let username = parameters.first().context("Expected username for audit, got none.")?
                     .to_string();
 
                 lcapi::fetch_user(username)
@@ -108,7 +107,7 @@ impl Commands {
             }
             "track" => {
                 let username = parameters
-                    .get(0).context("Expected username for tracking, got none.")?
+                    .first().context("Expected username for tracking, got none.")?
                     .to_string();
 
                 let user = lcapi::fetch_user(username).await?;
@@ -119,7 +118,7 @@ impl Commands {
             }
             "untrack" => {
                 let username = parameters
-                    .get(0).context("Expected username for untracking, got none.")?
+                    .first().context("Expected username for untracking, got none.")?
                     .to_string();
 
                 let user = lcapi::fetch_user(username).await?;
@@ -135,7 +134,7 @@ impl Commands {
                 String::from("call me clanker one more mf time")
             }
             _ => {
-                if Commands::is_valid_cmd(&command) {
+                if Commands::is_valid_cmd(command) {
                     log::info!("User submitted unknown command: {}", command);
                     return Err(anyhow!("No such command found: {}, see $help for commands.", command));
                 }
@@ -152,7 +151,7 @@ impl Commands {
     async fn get_recently_completed(username: &str) -> Result<String> {
         Ok(format!("{}", lcapi::fetch_recently_completed(username)
             .await?
-            .get(0)
+            .first()
             .context(format!("No recently completed problems for {}", username))?))
     }
 }
@@ -262,6 +261,9 @@ impl EventHandler for LeekHandler {
                 if let Err(err) = streak_handler(&daily_checker_ctx, channel_id).await {
                     log::error!("Error sending scheduled message: {}", err);
                 }
+                if let Err(err) = lcdb::clean_cache() {
+                    log::error!("Error clearing recent cache: {}", err);
+                }
             }
         });
 
@@ -295,7 +297,7 @@ impl EventHandler for LeekHandler {
         let content = msg.content.clone();
 
         // Clanker detection!
-        if content.to_lowercase().find("clanker").is_some() {
+        if content.to_lowercase().contains("clanker") {
             log::error!("Clanker");
             let _ = msg.react(&ctx.http, 
                 serenity::all::ReactionType::Unicode(String::from("😡"))).await;

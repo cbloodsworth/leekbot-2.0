@@ -1,6 +1,3 @@
-use serde::{Serialize, Deserialize};
-use serde::de::{self, Deserializer};
-
 use std::time::Duration;
 use chrono::DateTime;
 
@@ -54,13 +51,6 @@ pub struct Problem {
 
     pub titleSlug: String,
     pub difficulty: String,
-}
-
-fn string_to_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>
-where D: Deserializer<'de>
-{
-    let s = String::deserialize(deserializer)?;
-    s.parse::<usize>().map_err(de::Error::custom)
 }
 
 impl std::fmt::Display for Submission {

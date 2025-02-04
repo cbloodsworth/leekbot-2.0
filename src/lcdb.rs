@@ -39,7 +39,9 @@ pub fn initialize_db() -> Result<()> {
             username       TEXT        NOT NULL    REFERENCES Users(username),
             language       TEXT        NOT NULL,
             timestamp      TIMESTAMP   NOT NULL,
-            accepted       BOOLEAN     NOT NULL
+            accepted       BOOLEAN     NOT NULL,
+
+            url TEXT        NOT NULL
         )",
         []
     )?;
@@ -93,6 +95,8 @@ impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::Submission {
             accepted:   row.get("accepted")?,
             language:   row.get("language")?,
             timestamp:  row.get("timestamp")?,
+
+            url: row.get("url")?,
         })
     }
 }
@@ -145,16 +149,17 @@ pub fn insert_submission(submission: &models::Submission) -> Result<()> {
     log::info!("[insert_submission] Inserting submission into Submissions...");
 
     let query_params = rusqlite::named_params! {
-            ":problem_name": submission.problem.title, 
-            ":username":     submission.username,
-            ":language":     submission.language, 
-            ":timestamp":    submission.timestamp, 
-            ":accepted":     submission.accepted, 
+            ":problem_name":   submission.problem.title, 
+            ":username":       submission.username,
+            ":language":       submission.language, 
+            ":timestamp":      submission.timestamp, 
+            ":accepted":       submission.accepted, 
+            ":url":            submission.url,
     };
 
     connection.prepare(
-        "INSERT INTO Submissions ( problem_name,  username,  language,  timestamp,  accepted)
-         VALUES                  (:problem_name, :username, :language, :timestamp, :accepted)"
+        "INSERT INTO Submissions ( problem_name,  username,  language,  timestamp,  accepted,  url)
+         VALUES                  (:problem_name, :username, :language, :timestamp, :accepted, :url)"
     )?.execute(query_params)?;
 
     Ok(())
@@ -184,7 +189,7 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
 
     // Preparation for the query.
     let mut stmt = connection.prepare(
-            "SELECT s.username, s.timestamp, s.accepted, s.language,
+            "SELECT s.*,
                     p.problem_name, p.problem_link, p.difficulty
              FROM Submissions s
              JOIN Problems p ON s.problem_name = p.problem_name

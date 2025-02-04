@@ -243,7 +243,7 @@ fn submission_announcement(submission: &models::Submission) -> String {
     format!("{} just completed {}!\n\t{}",
         submission.username,
         submission.problem.title,
-        submission.problem.titleSlug)
+        submission.url)
 }
 
 

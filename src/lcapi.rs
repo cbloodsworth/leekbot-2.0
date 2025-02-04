@@ -32,16 +32,24 @@ pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>>
             Ok(submissions
                 .iter()
                 .filter_map(|val| {
+                    let problem = Problem {
+                        title: val.get("title")?.as_str()?.to_string(),
+                        titleSlug: val.get("titleSlug")?.as_str()?.to_string(),
+                        difficulty: String::from("NULL"),
+                    };
                     let sub = Submission {
-                        problem: Problem {
-                            title: val.get("title")?.as_str()?.to_string(),
-                            titleSlug: val.get("titleSlug")?.as_str()?.to_string(),
-                            difficulty: String::from("NULL"),
-                        },
                         username: username.to_string(),
                         language: val.get("lang")?.as_str()?.to_string(),
                         timestamp: val.get("timestamp")?.as_str()?.parse::<usize>().ok()? * 1000,
-                        accepted: val.get("statusDisplay")?.as_str()? == "Accepted"
+                        accepted: val.get("statusDisplay")?.as_str()? == "Accepted",
+                        url: {
+                            format!("https://leetcode.com/problems/{}/submissions/{}/", 
+                                problem.titleSlug.clone(),
+                                val.get("id")?.as_str()?
+                            )
+                        },
+
+                        problem
                     };
 
                     Some(sub)

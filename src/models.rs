@@ -42,6 +42,8 @@ pub struct Submission {
     pub language: String,
     pub timestamp: usize,
     pub accepted: bool,
+
+    pub url: String,
 }
 
 #[derive(Debug)]
@@ -60,9 +62,11 @@ impl std::fmt::Display for Submission {
             "**Submission**: {}\n\
             https://leetcode.com/problems/{}\n\
             \tAccepted?: *{}*\n\
+            \tURL:       {} \n\
             \tTimestamp: {} \n\
             \tLanguage: `{}`",
             self.problem.title, self.problem.titleSlug, 
+            self.url,
             self.accepted, 
             DateTime::from_timestamp(self.timestamp as i64, 0).unwrap_or_default(),
             self.language

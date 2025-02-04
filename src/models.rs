@@ -2,6 +2,7 @@ use serde::{Serialize, Deserialize};
 use serde::de::{self, Deserializer};
 
 use std::time::Duration;
+use chrono::DateTime;
 
 // Threshold for a problem to be considered 'recent' is 8 hours, or 28800 seconds
 pub const RECENT_THRESHOLD: usize = Duration::new(28800, 0).as_millis() as usize;
@@ -67,11 +68,14 @@ impl std::fmt::Display for Submission {
         write!(
             f,
             "**Submission**: {}\n\
-            https://leetcode.com/problems/{}/\n\
+            https://leetcode.com/problems/{}\n\
             \tAccepted?: *{}*\n\
             \tTimestamp: {} \n\
             \tLanguage: `{}`",
-            self.problem.title, self.problem.titleSlug, self.accepted, self.timestamp, self.language
+            self.problem.title, self.problem.titleSlug, 
+            self.accepted, 
+            DateTime::from_timestamp(self.timestamp as i64, 0).unwrap_or_default(),
+            self.language
         )
     }
 }

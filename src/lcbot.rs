@@ -241,7 +241,7 @@ async fn sleep_until_midnight_utc() {
 }
 
 fn submission_announcement(submission: &models::Submission) -> String {
-    format!("{} just completed {}!\n\thttps://leetcode.com/problems/{}",
+    format!("{} just completed {}!\n\t{}",
         submission.username,
         submission.problem.title,
         submission.problem.titleSlug)
@@ -267,7 +267,7 @@ impl EventHandler for LeekHandler {
 
         let recent_checker_ctx = ctx.clone();
         tokio::spawn(async move {
-            const RECENT_TIME_INTERVAL_SECS: u64 = 3 * 60; // 3 minute cooldown between checks
+            const RECENT_TIME_INTERVAL_SECS: u64 = 30; // 30 second cooldown between checks
             let mut interval = tokio::time::interval(StdDuration::from_secs(RECENT_TIME_INTERVAL_SECS));
             loop {
                 interval.tick().await;

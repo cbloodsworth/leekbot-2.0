@@ -199,7 +199,7 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
                and NOT EXISTS (
                  SELECT 1 
                  FROM RecentCache r 
-                 WHERE r.problem_name = s.problem_name
+                 WHERE r.timestamp = s.timestamp
                    and r.username = s.username
                )
              ORDER BY s.timestamp DESC"

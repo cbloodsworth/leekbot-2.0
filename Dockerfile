@@ -21,6 +21,9 @@ RUN apt-get update \
  && apt-get -y install libsqlite3-0 \
  && rm -rf /var/lib/apt/lists/*
 
+# Create a directory for runtime files
+WORKDIR /app
+
 # Copy the built binary from the builder stage
 COPY --from=builder /usr/local/bin/leekbot /usr/local/bin/leekbot
 

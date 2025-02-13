@@ -1,15 +1,14 @@
 ### Building and installation
 FROM rust:1-bullseye AS builder
 
+# Build and runtime dependencies (split into two stages later?)
+RUN apt-get update \
+ && apt-get -y install libsqlite3-dev \
+ && rm /var/lib/apt/lists/* -fr
+
+# Install leekbot
 WORKDIR /usr/src/leekbot
 COPY . .
 RUN cargo install --path .
 
-### Runtime image
-FROM debian:bullseye-slim
-
-RUN apt-get update && \
-    rm /var/lib/apt/lists/* -fr
-COPY --from=builder /usr/local/cargo/bin/leekbot /usr/local/bin/leekbot
-
-CMD ["leekbot"]
+CMD ["/usr/local/cargo/bin/leekbot"]

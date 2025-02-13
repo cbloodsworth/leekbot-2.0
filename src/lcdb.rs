@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::models;
 
 fn connect() -> Result<Connection> {
-    Ok(Connection::open("leek.db")?)
+    Ok(Connection::open("db/leek.db")?)
 }
 
 pub fn initialize_db() -> Result<()> {

@@ -9,8 +9,10 @@ if [ -z ${LEEKBOT+x} ]; then
 fi
 
 docker run \
+  --network=host \
   --volume "$LEEKBOT/db:$APPDIR/db" \
   --volume "$LEEKBOT/.env:$APPDIR/.env" \
+  --volume "$LEEKBOT/queries:$APPDIR/queries" \
   --detach \
   --name "leekbot" \
   $IMAGE

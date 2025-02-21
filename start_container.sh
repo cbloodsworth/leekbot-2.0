@@ -10,9 +10,9 @@ fi
 
 docker run \
   --network=host \
-  --volume "$LEEKBOT/db:$APPDIR/db" \
-  --volume "$LEEKBOT/.env:$APPDIR/.env" \
-  --volume "$LEEKBOT/queries:$APPDIR/queries" \
+  --volume "$LEEKBOT/db:$APPDIR/db:Z" \
+  --volume "$LEEKBOT/.env:$APPDIR/.env:Z" \
+  --volume "$LEEKBOT/queries:$APPDIR/queries:Z" \
   --detach \
   --name "leekbot" \
   $IMAGE

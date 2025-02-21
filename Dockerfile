@@ -19,6 +19,7 @@ FROM debian:bullseye-slim AS runtime
 # Install runtime dependencies
 RUN apt-get update \
  && apt-get -y install libsqlite3-0 \
+ && apt -y install ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 # Create a directory for runtime files

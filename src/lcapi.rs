@@ -110,7 +110,7 @@ pub async fn fetch_user(username: String) -> Result<User> {
 
 /// Runs a GraphQL query on the leetcode servers for `username`.
 async fn query_user(username: &str) -> Result<QueryResponse> {
-    let query = read_query_from_file("src/queries/lcuser.graphql")?;
+    let query = read_query_from_file("queries/lcuser.graphql")?;
     let variables = serde_json::json!({ "username": username });
     let body = RequestBody { query, variables };
     let headers = HeaderMap::from_iter([

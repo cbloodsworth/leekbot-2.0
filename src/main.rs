@@ -13,14 +13,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize database
     lcdb::initialize_db()
-        .context("Error initializing database.")
-        .unwrap();
+        .context("Error initializing database.")?;
 
     // Run the discord bot
     lcbot::run_leekbot()
         .await
-        .context("Error initializing discord bot.")
-        .unwrap();
+        .context("Error initializing discord bot.")?;
 
     Ok(())
 }

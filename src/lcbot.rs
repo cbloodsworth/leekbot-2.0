@@ -31,10 +31,16 @@ fn getenv_announcements_channel() -> u64 {
         .expect("'ANNOUNCEMENTS_CHANNEL_ID should be parseable into a u64.")
 }
 
-/// Get the call token. May panic.
+/// Get the call token from the environment (.env file)
+///
+/// # Panics
+/// If $BOT_CALL_TOKEN is not defined, or is more than a single character, will panic.
 fn getenv_call_token() -> char {
     let env_token = env::var("BOT_CALL_TOKEN")
-        .unwrap_or(String::from("$"));
+        .unwrap_or_else(|_| {
+            log::error!("$BOT_CALL_TOKEN not defined. \n Please define a single-character call-token (i.e., $ or !)");
+            panic!()
+        });
 
     let token = env_token.chars().next().expect("BOT_CALL_TOKEN is empty.");
     if env_token.len() > 1 { 

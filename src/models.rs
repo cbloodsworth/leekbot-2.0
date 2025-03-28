@@ -1,5 +1,5 @@
-use std::time::Duration;
 use chrono::DateTime;
+use std::time::Duration;
 
 // Threshold for a problem to be considered 'recent' is 8 hours, or 28800 seconds
 pub const RECENT_THRESHOLD: usize = Duration::new(28800, 0).as_millis() as usize;
@@ -29,7 +29,12 @@ impl std::fmt::Display for User {
              \tTotal Solved: {}\n\
              \tRanking: {}\n\
              \tStreak: {}",
-            self.easy_solved, self.medium_solved, self.hard_solved, self.total_solved, self.ranking, self.streak
+            self.easy_solved,
+            self.medium_solved,
+            self.hard_solved,
+            self.total_solved,
+            self.ranking,
+            self.streak
         )
     }
 }
@@ -63,9 +68,10 @@ impl std::fmt::Display for Submission {
             \tURL:       {} \n\
             \tTimestamp: {} \n\
             \tLanguage: `{}`",
-            self.problem.title, self.problem.url, 
+            self.problem.title,
+            self.problem.url,
             self.url,
-            self.accepted, 
+            self.accepted,
             DateTime::from_timestamp(self.timestamp as i64, 0).unwrap_or_default(),
             self.language
         )

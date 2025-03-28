@@ -1,5 +1,5 @@
-use anyhow::{Result, Context};
-use rusqlite::{params, Connection};
+use anyhow::{Context, Result};
+use rusqlite::{Connection, params};
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -25,7 +25,7 @@ pub fn initialize_db() -> Result<()> {
             ranking        INTEGER     NOT NULL,
             streak         INTEGER     NOT NULL
         )",
-        []
+        [],
     )?;
 
     // Submission table
@@ -41,7 +41,7 @@ pub fn initialize_db() -> Result<()> {
 
             url TEXT        NOT NULL
         )",
-        []
+        [],
     )?;
 
     // Problem table
@@ -54,7 +54,7 @@ pub fn initialize_db() -> Result<()> {
 
             UNIQUE(problem_name, problem_link, difficulty)
         )",
-        []
+        [],
     )?;
 
     // Recent Submission Cache
@@ -68,13 +68,11 @@ pub fn initialize_db() -> Result<()> {
 
             UNIQUE (problem_name, username, timestamp, accepted)
         )",
-        []
+        [],
     )?;
 
     Ok(())
 }
-
-
 
 /////*============== SUBMISSION QUERIES ==============*/
 impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::Submission {
@@ -82,18 +80,18 @@ impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::Submission {
 
     fn try_from(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
         let problem = models::Problem {
-            title:      row.get("problem_name")?,
-            url:        row.get("problem_link")?,
+            title: row.get("problem_name")?,
+            url: row.get("problem_link")?,
             difficulty: row.get("difficulty")?,
         };
 
         Ok(Self {
             problem,
 
-            username:   row.get("username")?,
-            accepted:   row.get("accepted")?,
-            language:   row.get("language")?,
-            timestamp:  row.get("timestamp")?,
+            username: row.get("username")?,
+            accepted: row.get("accepted")?,
+            language: row.get("language")?,
+            timestamp: row.get("timestamp")?,
 
             url: row.get("url")?,
         })
@@ -114,29 +112,31 @@ pub fn query_submissions_recent_all(user: &models::User) -> Result<Vec<models::S
     // Parameters for our query. We're mainly trying to only grab submissions
     // that have been posted in the last `models::RECENT_THRESHOLD` milliseconds.
     let query_params = rusqlite::named_params! {
-            ":username": username, 
-            ":current_timestamp": current_timestamp, 
+            ":username": username,
+            ":current_timestamp": current_timestamp,
             ":recent_threshold": models::RECENT_THRESHOLD
     };
 
     // Preparation for the query.
     let mut stmt = connection.prepare(
-            "SELECT s.username, s.timestamp, s.accepted,
+        "SELECT s.username, s.timestamp, s.accepted,
                     p.problem_name, p.problem_link, p.difficulty
              FROM Submissions s
              JOIN Problems p ON s.problem_name = p.problem_name
              WHERE s.username = :username
                and :current_timestamp - s.timestamp < :recent_threshold
-             ORDER BY s.timestamp DESC"
+             ORDER BY s.timestamp DESC",
     )?;
 
     // Query!
-    // PERFORMANCE CONSIDERATION: 
+    // PERFORMANCE CONSIDERATION:
     //   We eagerly evaluate the iterator into a vector, here. Though it doesn't really make sense
-    //   for us to really need _all_ 
+    //   for us to really need _all_
     let submissions = stmt
         .query_map(query_params, |row| models::Submission::try_from(row))
-        .context(format!("Could not find recent submissions for user: {username}"))?
+        .context(format!(
+            "Could not find recent submissions for user: {username}"
+        ))?
         .collect::<Result<Vec<models::Submission>, _>>()?;
 
     Ok(submissions)
@@ -148,11 +148,11 @@ pub fn insert_submission(submission: &models::Submission) -> Result<()> {
     log::debug!("[insert_submission] Inserting submission into Submissions...");
 
     let query_params = rusqlite::named_params! {
-            ":problem_name":   submission.problem.title, 
+            ":problem_name":   submission.problem.title,
             ":username":       submission.username,
-            ":language":       submission.language, 
-            ":timestamp":      submission.timestamp, 
-            ":accepted":       submission.accepted, 
+            ":language":       submission.language,
+            ":timestamp":      submission.timestamp,
+            ":accepted":       submission.accepted,
             ":url":            submission.url,
     };
 
@@ -164,10 +164,7 @@ pub fn insert_submission(submission: &models::Submission) -> Result<()> {
     Ok(())
 }
 
-
-
 /////*============== RECENT CACHE QUERIES ==============*/
-
 /// Queries the database for (accepted) submissions that haven't already been announced to the server.
 pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Submission>> {
     let connection = connect()?;
@@ -181,14 +178,14 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
     // Parameters for our query. We're mainly trying to only grab submissions
     // that have been posted in the last `models::RECENT_THRESHOLD` seconds.
     let query_params = rusqlite::named_params! {
-            ":username": &user.username, 
-            ":current_timestamp": current_timestamp, 
+            ":username": &user.username,
+            ":current_timestamp": current_timestamp,
             ":recent_threshold": models::RECENT_THRESHOLD
     };
 
     // Preparation for the query.
     let mut stmt = connection.prepare(
-            "SELECT s.*,
+        "SELECT s.*,
                     p.problem_name, p.problem_link, p.difficulty
              FROM Submissions s
              JOIN Problems p ON s.problem_name = p.problem_name
@@ -200,12 +197,12 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
                  WHERE r.timestamp = s.timestamp
                    and r.username = s.username
                )
-             ORDER BY s.timestamp DESC"
+             ORDER BY s.timestamp DESC",
     )?;
 
     let submissions = stmt
         .query_map(query_params, |row| models::Submission::try_from(row))
-        .context("No recent submissions...?")?  // This might not be the right error msg
+        .context("No recent submissions...?")? // This might not be the right error msg
         .collect::<Result<Vec<models::Submission>, _>>()?;
 
     // Keep our new cache updated
@@ -222,7 +219,7 @@ pub fn insert_cache_submission(submission: &models::Submission) -> Result<()> {
     let connection = connect()?;
 
     let query_params = rusqlite::named_params! {
-            ":username": &submission.username, 
+            ":username": &submission.username,
             ":problem_name": &submission.problem.title,
             ":timestamp": &submission.timestamp,
             ":accepted": &submission.accepted,
@@ -230,10 +227,12 @@ pub fn insert_cache_submission(submission: &models::Submission) -> Result<()> {
 
     // Preparation for the query.
     log::debug!("[insert_cache_submission] caching submission...");
-    connection.prepare(
+    connection
+        .prepare(
             "INSERT OR IGNORE INTO RecentCache (username, problem_name, timestamp, accepted)
-             VALUES (:username, :problem_name, :timestamp, :accepted)"
-    )?.execute(query_params)?;
+             VALUES (:username, :problem_name, :timestamp, :accepted)",
+        )?
+        .execute(query_params)?;
 
     Ok(())
 }
@@ -251,20 +250,20 @@ pub fn clean_cache() -> Result<()> {
     // Parameters for our query. We're mainly trying to only grab submissions
     // that have been posted in the last `models::RECENT_THRESHOLD` milliseconds.
     let query_params = rusqlite::named_params! {
-            ":current_timestamp": current_timestamp, 
+            ":current_timestamp": current_timestamp,
             ":recent_threshold": models::RECENT_THRESHOLD
     };
 
     // Preparation for the query.
-    connection.prepare(
+    connection
+        .prepare(
             "DELETE FROM RecentCache
-             WHERE :current_timestamp - timestamp > :recent_threshold"
-    )?.execute(query_params)?;
+             WHERE :current_timestamp - timestamp > :recent_threshold",
+        )?
+        .execute(query_params)?;
 
     Ok(())
 }
-
-
 
 /////*============== USER QUERIES ==============*/
 impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::User {
@@ -272,13 +271,13 @@ impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::User {
 
     fn try_from(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
         Ok(Self {
-            username:      row.get("username")?,
-            easy_solved:   row.get("easy_solved")?,
+            username: row.get("username")?,
+            easy_solved: row.get("easy_solved")?,
             medium_solved: row.get("medium_solved")?,
-            hard_solved:   row.get("hard_solved")?,
-            total_solved:  row.get("total_solved")?,
-            ranking:       row.get("ranking")?,
-            streak:        row.get("streak")?,
+            hard_solved: row.get("hard_solved")?,
+            total_solved: row.get("total_solved")?,
+            ranking: row.get("ranking")?,
+            streak: row.get("streak")?,
         })
     }
 }
@@ -289,9 +288,9 @@ pub fn query_tracked_users() -> Result<Vec<models::User>> {
 
     // Preparation for the query.
     let mut stmt = connection.prepare(
-            "SELECT username, easy_solved, medium_solved, hard_solved, total_solved, ranking, streak
+        "SELECT username, easy_solved, medium_solved, hard_solved, total_solved, ranking, streak
              FROM Users
-             WHERE tracked = 1"
+             WHERE tracked = 1",
     )?;
 
     // Query!
@@ -307,7 +306,10 @@ pub fn query_tracked_users() -> Result<Vec<models::User>> {
 pub fn insert_user(user: &models::User) -> Result<()> {
     let connection = connect()?;
 
-    log::info!("[insert_user] Inserting user {} into Users...", user.username);
+    log::info!(
+        "[insert_user] Inserting user {} into Users...",
+        user.username
+    );
 
     let query_params = rusqlite::named_params! {
             ":username":      user.username,
@@ -316,8 +318,8 @@ pub fn insert_user(user: &models::User) -> Result<()> {
             ":medium_solved": user.medium_solved,
             ":hard_solved":   user.hard_solved,
             ":total_solved":  user.total_solved,
-            ":ranking":       user.ranking, 
-            ":streak":        user.streak, 
+            ":ranking":       user.ranking,
+            ":streak":        user.streak,
     };
 
     connection.prepare(
@@ -331,15 +333,19 @@ pub fn insert_user(user: &models::User) -> Result<()> {
 /// Tracks a user by updating the "tracked" field to true.
 ///   Inserts the user if it isn't in the database already.
 pub fn track_user(user: &models::User) -> Result<()> {
-    if !user_exists(user)? { insert_user(user)?; }
+    if !user_exists(user)? {
+        insert_user(user)?;
+    }
 
     let connection = connect()?;
-    connection.prepare(
-        "UPDATE Users
+    connection
+        .prepare(
+            "UPDATE Users
          SET tracked = 1
          WHERE username = ?
-        "
-    )?.execute(params![&user.username])?;
+        ",
+        )?
+        .execute(params![&user.username])?;
 
     Ok(())
 }
@@ -347,15 +353,19 @@ pub fn track_user(user: &models::User) -> Result<()> {
 /// Untracks a user by updating the "tracked" field to false.
 ///   Inserts the user if it isn't in the database already.
 pub fn untrack_user(user: &models::User) -> Result<()> {
-    if !user_exists(user)? { insert_user(user)?; }
+    if !user_exists(user)? {
+        insert_user(user)?;
+    }
 
     let connection = connect()?;
-    connection.prepare(
-        "UPDATE Users
+    connection
+        .prepare(
+            "UPDATE Users
          SET tracked = 0
          WHERE username = ?
-        "
-    )?.execute(params![&user.username])?;
+        ",
+        )?
+        .execute(params![&user.username])?;
 
     Ok(())
 }
@@ -363,11 +373,13 @@ pub fn untrack_user(user: &models::User) -> Result<()> {
 /// Return whether a user is being tracked.
 pub fn is_tracked(user: &models::User) -> Result<bool> {
     let connection = connect()?;
-    let is_tracked = connection.prepare(
-        "SELECT *
+    let is_tracked = connection
+        .prepare(
+            "SELECT *
          FROM Users
-         WHERE username = ? and tracked = 1"
-    )?.exists(params![&user.username])?;
+         WHERE username = ? and tracked = 1",
+        )?
+        .exists(params![&user.username])?;
 
     Ok(is_tracked)
 }
@@ -389,24 +401,29 @@ pub fn is_active(user: &models::User) -> Result<bool> {
             ":DAY_IN_MILLIS": DAY_IN_MILLIS,
     };
 
-    let is_tracked = connection.prepare(
+    let is_tracked = connection
+        .prepare(
             "SELECT 1
              FROM Users u
              JOIN Submissions s ON s.username = u.username
              WHERE u.username = :username 
                and u.tracked = 1
                and s.accepted = 1
-               and :current_timestamp - s.timestamp < :DAY_IN_MILLIS"
-    )?.exists(query_params)?;
+               and :current_timestamp - s.timestamp < :DAY_IN_MILLIS",
+        )?
+        .exists(query_params)?;
 
     Ok(is_tracked)
 }
 
 pub fn streak_increment(user: &models::User) -> Result<()> {
     let connection = connect()?;
-    connection.prepare( "UPDATE Users 
+    connection
+        .prepare(
+            "UPDATE Users 
                          SET streak = streak + 1 
-                         WHERE username = ?")?
+                         WHERE username = ?",
+        )?
         .execute(params![&user.username])?;
 
     Ok(())
@@ -414,16 +431,19 @@ pub fn streak_increment(user: &models::User) -> Result<()> {
 
 pub fn query_streak(user: &models::User) -> Result<u64> {
     let connection = connect()?;
-    let mut stmt = connection.prepare( "SELECT streak FROM Users WHERE username = ?")?;
+    let mut stmt = connection.prepare("SELECT streak FROM Users WHERE username = ?")?;
     Ok(stmt.query_row(params![&user.username], |row| row.get("streak"))?)
 }
 
 // Breaks the user's streak.
 pub fn streak_break(user: &models::User) -> Result<()> {
     let connection = connect()?;
-    connection.prepare( "UPDATE Users 
+    connection
+        .prepare(
+            "UPDATE Users 
                          SET streak = 0
-                         WHERE username = ?")?
+                         WHERE username = ?",
+        )?
         .execute(params![&user.username])?;
 
     Ok(())
@@ -433,7 +453,10 @@ pub fn streak_break(user: &models::User) -> Result<()> {
 pub fn insert_problem(problem: &models::Problem) -> Result<()> {
     let connection = connect()?;
 
-    log::debug!("[insert_problem] Inserting problem {} into Problems...", problem.title);
+    log::debug!(
+        "[insert_problem] Inserting problem {} into Problems...",
+        problem.title
+    );
 
     let query_params = rusqlite::named_params! {
             ":problem_name": problem.title,
@@ -441,30 +464,36 @@ pub fn insert_problem(problem: &models::Problem) -> Result<()> {
             ":difficulty":   problem.difficulty
     };
 
-    connection.prepare(
-        "INSERT OR IGNORE INTO Problems ( problem_name,  problem_link,  difficulty)
-         VALUES                         (:problem_name, :problem_link, :difficulty)"
-    )?.execute(query_params)?;
+    connection
+        .prepare(
+            "INSERT OR IGNORE INTO Problems ( problem_name,  problem_link,  difficulty)
+         VALUES                         (:problem_name, :problem_link, :difficulty)",
+        )?
+        .execute(query_params)?;
 
     Ok(())
 }
-
-
 
 /////*============== INTERNAL API ==============*/
 /// [internal] Checks if the user is in the database.
 fn user_exists(user: &models::User) -> Result<bool> {
     let connection = connect()?;
-    let exists = connection.prepare(
+    let exists = connection
+        .prepare(
             "SELECT *
              FROM Users
-             WHERE username = ?"
-    )?.exists(params![&user.username])?;
+             WHERE username = ?",
+        )?
+        .exists(params![&user.username])?;
 
     Ok(exists)
 }
 
-pub fn insert_fake_submission(user: &models::User, problem_name: &str, accepted: bool) -> Result<()> {
+pub fn insert_fake_submission(
+    user: &models::User,
+    problem_name: &str,
+    accepted: bool,
+) -> Result<()> {
     let problem = models::Problem {
         title: problem_name.to_owned(),
         url: String::from("no_url"),
@@ -485,7 +514,7 @@ pub fn insert_fake_submission(user: &models::User, problem_name: &str, accepted:
                 .as_millis() as usize
         },
         accepted,
-        url: String::from("no_url")
+        url: String::from("no_url"),
     };
 
     insert_submission(&submission)?;

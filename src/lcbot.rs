@@ -4,10 +4,10 @@ use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 
-use chrono::{Utc, Timelike};
+use chrono::{Timelike, Utc};
 
 use std::time::Duration as StdDuration;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 use dotenv::dotenv;
 use std::env;
@@ -16,10 +16,10 @@ use crate::lcapi;
 use crate::lcdb;
 use crate::models;
 
-use rand::seq::SliceRandom;
 use rand::rng;
+use rand::seq::SliceRandom;
 
-use anyhow::{Result, Context, anyhow};
+use anyhow::{Context, Result, anyhow};
 
 const MAX_CMD_LENGTH: usize = 12;
 
@@ -47,8 +47,11 @@ fn getenv_call_token() -> char {
         });
 
     let token = env_token.chars().next().expect("BOT_CALL_TOKEN is empty.");
-    if env_token.len() > 1 { 
-        log::warn!("$BOT_CALL_TOKEN not a single character. Truncating to {}", token);
+    if env_token.len() > 1 {
+        log::warn!(
+            "$BOT_CALL_TOKEN not a single character. Truncating to {}",
+            token
+        );
     }
 
     token
@@ -64,9 +67,10 @@ pub async fn run_leekbot() -> Result<()> {
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
 
-    let mut client =
-        Client::builder(&token, intents).event_handler(LeekHandler).await
-            .context("Error creating client.")?;
+    let mut client = Client::builder(&token, intents)
+        .event_handler(LeekHandler)
+        .await
+        .context("Error creating client.")?;
 
     client.start().await?;
 
@@ -77,30 +81,34 @@ pub struct Commands;
 impl Commands {
     pub async fn run_command(ctx: &serenity::client::Context, msg: &Message) -> Result<String> {
         // Split the message's content (on whitespace) into:
-        // - The command (first token) 
+        // - The command (first token)
         // - Its parameters (all tokens afterwards)
-        let input = String::from(&msg.content[1..]);  // skip the first letter for the command: it's '$'
+        let input = String::from(&msg.content[1..]); // skip the first letter for the command: it's '$'
         let split_tokens = input.split_whitespace().collect::<Vec<_>>();
-        let (&[command], parameters) = split_tokens.split_at(1) else { return Err(anyhow!("easd"))};
+        let (&[command], parameters) = split_tokens.split_at(1) else {
+            return Err(anyhow!("easd"));
+        };
 
         // Execute the command
         let result: String = match command {
             "audit" => {
-                let username = parameters.first().context("Expected username for audit, got none.")?
+                let username = parameters
+                    .first()
+                    .context("Expected username for audit, got none.")?
                     .to_string();
 
-                lcapi::fetch_user(username)
-                    .await
-                    .map(|user| {
-                        let tracked = lcdb::is_tracked(&user).unwrap();
-                        let output = format!("{}\nThis user is {}currently being tracked.", user, if tracked {""} else {"not "});
+                lcapi::fetch_user(username).await.map(|user| {
+                    let tracked = lcdb::is_tracked(&user).unwrap();
+                    let output = format!(
+                        "{}\nThis user is {}currently being tracked.",
+                        user,
+                        if tracked { "" } else { "not " }
+                    );
 
-                        output
-                    })?
+                    output
+                })?
             }
-            "recent" => {
-                Self::get_recently_completed(parameters[0]).await?
-            }
+            "recent" => Self::get_recently_completed(parameters[0]).await?,
             "tracklist" => {
                 let mut output = String::from("**Tracked users:**");
                 let users = lcdb::query_tracked_users();
@@ -120,40 +128,45 @@ impl Commands {
             }
             "track" => {
                 let username = parameters
-                    .first().context("Expected username for tracking, got none.")?
+                    .first()
+                    .context("Expected username for tracking, got none.")?
                     .to_string();
 
                 let user = lcapi::fetch_user(username).await?;
                 lcdb::track_user(&user)?;
 
-                msg.react(&ctx.http, serenity::all::ReactionType::Unicode(String::from("✅"))).await?;
+                msg.react(
+                    &ctx.http,
+                    serenity::all::ReactionType::Unicode(String::from("✅")),
+                )
+                .await?;
                 String::from("")
             }
             "untrack" => {
                 let username = parameters
-                    .first().context("Expected username for untracking, got none.")?
+                    .first()
+                    .context("Expected username for untracking, got none.")?
                     .to_string();
 
                 let user = lcapi::fetch_user(username).await?;
                 lcdb::untrack_user(&user)?;
 
-                msg.react(&ctx.http, serenity::all::ReactionType::Unicode(String::from("✅"))).await?;
+                msg.react(
+                    &ctx.http,
+                    serenity::all::ReactionType::Unicode(String::from("✅")),
+                )
+                .await?;
                 String::from("")
             }
-            "help" => {
-                Self::get_help()
-            }
-            "clanker" => {
-                String::from("call me clanker one more mf time")
-            }
+            "help" => Self::get_help(),
+            "clanker" => String::from("call me clanker one more mf time"),
             "insert" => {
                 if !is_debug_mode() {
                     String::from("This command is only available in debug mode.")
-                }
-                else {
-                    let (params, problem_name) = parameters
-                        .split_at_checked(2)
-                        .context("Expected usage: `!insert <username> <success|failure> <problem_name>`")?;
+                } else {
+                    let (params, problem_name) = parameters.split_at_checked(2).context(
+                        "Expected usage: `!insert <username> <success|failure> <problem_name>`",
+                    )?;
 
                     let username = params
                         .first()
@@ -161,12 +174,11 @@ impl Commands {
                         .to_string();
 
                     let user = lcapi::fetch_user(username).await?;
-                    
+
                     let success = parameters
                         .get(1)
                         .context("Expected problem result (success | failure), got none.")?
                         .eq(&"success");
-                        
 
                     let problem = problem_name.join(" ");
 
@@ -178,11 +190,13 @@ impl Commands {
             _ => {
                 if Commands::is_valid_cmd(command) {
                     log::info!("User submitted unknown command: {}", command);
-                    return Err(anyhow!("No such command found: {}, see $help for commands.", command));
-                }
-                else {
+                    return Err(anyhow!(
+                        "No such command found: {}, see $help for commands.",
+                        command
+                    ));
+                } else {
                     log::info!("User submitted invalid command: {}", command);
-                    return Err(anyhow!("Invalid command syntax."))
+                    return Err(anyhow!("Invalid command syntax."));
                 }
             }
         };
@@ -191,10 +205,13 @@ impl Commands {
     }
 
     async fn get_recently_completed(username: &str) -> Result<String> {
-        Ok(format!("{}", lcapi::fetch_recently_completed(username)
-            .await?
-            .first()
-            .context(format!("No recently completed problems for {}", username))?))
+        Ok(format!(
+            "{}",
+            lcapi::fetch_recently_completed(username)
+                .await?
+                .first()
+                .context(format!("No recently completed problems for {}", username))?
+        ))
     }
 }
 
@@ -202,15 +219,17 @@ impl Commands {
 impl Commands {
     /// Ensures that the string slice conforms to C-like identifier regex
     fn is_valid_cmd(s: &str) -> bool {
-        s.len() <= MAX_CMD_LENGTH &&
-        regex::Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap().is_match(s)
+        s.len() <= MAX_CMD_LENGTH
+            && regex::Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+                .unwrap()
+                .is_match(s)
     }
 
     /// Gets a help string. Should be updated after a new command is added
     /// TODO: Generate automatically?
     pub fn get_help() -> String {
         String::from(
-r#"
+            r#"
 **Command List:**
 `$audit <leetcode username>`:  Get stats on a leetcode user.
 `$recent <leetcode username>`:  Get the most recent submission from a leetcode user.
@@ -218,15 +237,16 @@ r#"
 `$untrack <leetcode username>`:  Untrack a user.
 `$tracklist`:  List all tracked users.
 `$help`:  Get information on supported commands
-"#)
+"#,
+        )
     }
 }
 
 /// Checks recent Leetcode submissions for all tracked users,
 ///   compares with the ones represented in the recency cache,
 ///   and returns the ones that should be announced.
-/// 
-/// Intended to be run regularly. 
+///
+/// Intended to be run regularly.
 /// Interfaces with all three modules: discord, leetcode API, database.
 async fn check_recent_submissions() -> Result<Vec<models::Submission>> {
     let mut result = Vec::new();
@@ -253,12 +273,21 @@ async fn streak_handler(ctx: &serenity::client::Context, channel_id: u64) -> Res
         let streak = lcdb::query_streak(&user)?;
         if active {
             lcdb::streak_increment(&user)?;
-            channel.say(&ctx.http, 
-                format!("{} is on a roll with a streak of {}!", &user.username, streak+1)).await?;
-        }
-        else if streak > 0 {
+            channel
+                .say(
+                    &ctx.http,
+                    format!(
+                        "{} is on a roll with a streak of {}!",
+                        &user.username,
+                        streak + 1
+                    ),
+                )
+                .await?;
+        } else if streak > 0 {
             lcdb::streak_break(&user)?;
-            channel.say(&ctx.http, format!("{} lost their streak!", &user.username)).await?;
+            channel
+                .say(&ctx.http, format!("{} lost their streak!", &user.username))
+                .await?;
         }
     }
 
@@ -276,26 +305,29 @@ async fn sleep_until_midnight_utc() {
     let mins_to_wait = (24 * 60 - now_minutes) + target_minutes;
 
     let sleep_duration = Duration::from_secs((mins_to_wait * 60) as u64);
-    log::info!("Next announcement in {} minutes.", sleep_duration.as_secs() / 60);
+    log::info!(
+        "Next announcement in {} minutes.",
+        sleep_duration.as_secs() / 60
+    );
 
     sleep(sleep_duration).await;
 }
 
 fn submission_announcement(submission: &models::Submission) -> String {
     if submission.accepted {
-        format!("✅ {} just completed [{}]({})!\n\t{}",
-            submission.username,
-            submission.problem.title,
-            submission.problem.url,
-            submission.url)
-    }
-    else {
-        format!("❌ {} just submitted an attempt for [{}]({}), but {}\n\t{}",
+        format!(
+            "✅ {} just completed [{}]({})!\n\t{}",
+            submission.username, submission.problem.title, submission.problem.url, submission.url
+        )
+    } else {
+        format!(
+            "❌ {} just submitted an attempt for [{}]({}), but {}\n\t{}",
             submission.username,
             submission.problem.title,
             submission.problem.url,
             generate_misattempt_msg(),
-            submission.url)
+            submission.url
+        )
     }
 }
 
@@ -327,17 +359,16 @@ fn generate_misattempt_msg() -> String {
         "Are they cooked?",
         "And you say I'm the clanker...",
         "A horrible performance, really.",
-        "Wow."
+        "Wow.",
     ];
 
     let mut rng = rng();
-    format!("{} {}",
+    format!(
+        "{} {}",
         first.choose(&mut rng).unwrap_or(&"they borked it."),
         second.choose(&mut rng).unwrap_or(&"")
     )
-        
 }
-
 
 struct LeekHandler;
 #[async_trait]
@@ -362,7 +393,8 @@ impl EventHandler for LeekHandler {
         let recent_checker_ctx = ctx.clone();
         tokio::spawn(async move {
             const RECENT_TIME_INTERVAL_SECS: u64 = 30; // 30 second cooldown between checks
-            let mut interval = tokio::time::interval(StdDuration::from_secs(RECENT_TIME_INTERVAL_SECS));
+            let mut interval =
+                tokio::time::interval(StdDuration::from_secs(RECENT_TIME_INTERVAL_SECS));
             loop {
                 interval.tick().await;
 
@@ -370,7 +402,10 @@ impl EventHandler for LeekHandler {
                     Ok(new_submissions) => {
                         for submission in new_submissions {
                             if let Err(err) = serenity::model::id::ChannelId::new(channel_id)
-                                .say(&recent_checker_ctx.http, submission_announcement(&submission))
+                                .say(
+                                    &recent_checker_ctx.http,
+                                    submission_announcement(&submission),
+                                )
                                 .await
                             {
                                 log::error!("Error sending scheduled message: {}", err);
@@ -391,24 +426,32 @@ impl EventHandler for LeekHandler {
         // Clanker detection!
         if content.to_lowercase().contains("clanker") {
             log::error!("Clanker");
-            let _ = msg.react(&ctx.http, 
-                serenity::all::ReactionType::Unicode(String::from("😡"))).await;
+            let _ = msg
+                .react(
+                    &ctx.http,
+                    serenity::all::ReactionType::Unicode(String::from("😡")),
+                )
+                .await;
         }
 
         // Commands
         if content.starts_with(getenv_call_token()) && content.len() > 1 {
             let response = match Commands::run_command(&ctx, &msg).await {
-                Ok(message) => { message }
-                Err(err) => { format!("Error: {}", err) }
+                Ok(message) => message,
+                Err(err) => {
+                    format!("Error: {}", err)
+                }
             };
 
             // Discord doesn't like sending empty messages.
             // If everything is ok and the bot doesn't have anything to say, return early.
-            if response.is_empty() { return; }
+            if response.is_empty() {
+                return;
+            }
 
-            // Attempt to send response. 
-            // If something goes wrong, we want to let the user know, if possible, 
-            //   so we try to send another "Oops, internal error" before exiting. 
+            // Attempt to send response.
+            // If something goes wrong, we want to let the user know, if possible,
+            //   so we try to send another "Oops, internal error" before exiting.
             // If *that* message can't be sent, it can't be helped...
             //   but it will be logged on our end anyways.
             if let Err(why) = channel.say(&ctx.http, response).await {

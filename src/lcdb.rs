@@ -39,7 +39,9 @@ pub fn initialize_db() -> Result<()> {
             timestamp      TIMESTAMP   NOT NULL,
             accepted       BOOLEAN     NOT NULL,
 
-            url TEXT        NOT NULL
+            url TEXT        NOT NULL,
+
+            UNIQUE(problem_name, username, timestamp)
         )",
         [],
     )?;

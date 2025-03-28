@@ -1,9 +1,8 @@
-use leekbot::lcdb;
 use leekbot::lcbot;
+use leekbot::lcdb;
 
 use anyhow::Context;
 use dotenv::dotenv;
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -12,8 +11,7 @@ async fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env("LOG_LEVEL").init();
 
     // Initialize database
-    lcdb::initialize_db()
-        .context("Error initializing database.")?;
+    lcdb::initialize_db().context("Error initializing database.")?;
 
     // Run the discord bot
     lcbot::run_leekbot()

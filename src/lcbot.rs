@@ -23,6 +23,10 @@ use anyhow::{Result, Context, anyhow};
 
 const MAX_CMD_LENGTH: usize = 12;
 
+fn is_debug_mode() -> bool {
+    getenv_call_token() == '!'
+}
+
 /// Get the announcements channel ID. May panic.
 fn getenv_announcements_channel() -> u64 {
     env::var("ANNOUNCEMENTS_CHANNEL_ID")
@@ -141,6 +145,35 @@ impl Commands {
             }
             "clanker" => {
                 String::from("call me clanker one more mf time")
+            }
+            "insert" => {
+                if !is_debug_mode() {
+                    String::from("This command is only available in debug mode.")
+                }
+                else {
+                    let (params, problem_name) = parameters
+                        .split_at_checked(2)
+                        .context("Expected usage: `!insert <username> <success|failure> <problem_name>`")?;
+
+                    let username = params
+                        .first()
+                        .context("Expected username for tracking, got none.")?
+                        .to_string();
+
+                    let user = lcapi::fetch_user(username).await?;
+                    
+                    let success = parameters
+                        .get(1)
+                        .context("Expected problem result (success | failure), got none.")?
+                        .eq(&"success");
+                        
+
+                    let problem = problem_name.join(" ");
+
+                    lcdb::insert_fake_submission(&user, &problem, success)?;
+
+                    format!("Inserted fake submission: {problem}")
+                }
             }
             _ => {
                 if Commands::is_valid_cmd(command) {

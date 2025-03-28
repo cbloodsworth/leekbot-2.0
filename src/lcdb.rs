@@ -32,8 +32,6 @@ pub fn initialize_db() -> Result<()> {
     log::debug!("[initialize_db] creating Submissions table...");
     connect()?.execute(
         "CREATE TABLE IF NOT EXISTS Submissions (
-            id             INTEGER     PRIMARY KEY,
-
             problem_name   TEXT        NOT NULL    REFERENCES Problems(problem_name),
 
             username       TEXT        NOT NULL    REFERENCES Users(username),
@@ -464,4 +462,33 @@ fn user_exists(user: &models::User) -> Result<bool> {
     )?.exists(params![&user.username])?;
 
     Ok(exists)
+}
+
+pub fn insert_fake_submission(user: &models::User, problem_name: &str, accepted: bool) -> Result<()> {
+    let problem = models::Problem {
+        title: problem_name.to_owned(),
+        url: String::from("no_url"),
+        difficulty: String::from("no difficulty"),
+    };
+
+    insert_problem(&problem)?;
+
+    let submission = models::Submission {
+        username: user.username.to_owned(),
+        problem,
+        language: String::from("no_language"),
+        timestamp: {
+            // Get the current timestamp, approximately
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .context("Time went backwards????")?
+                .as_millis() as usize
+        },
+        accepted,
+        url: String::from("no_url")
+    };
+
+    insert_submission(&submission)?;
+
+    Ok(())
 }

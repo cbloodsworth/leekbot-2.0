@@ -228,15 +228,16 @@ impl Commands {
     /// Gets a help string. Should be updated after a new command is added
     /// TODO: Generate automatically?
     pub fn get_help() -> String {
-        String::from(
+        let T = getenv_call_token();
+        format!(
             r#"
 **Command List:**
-`$audit <leetcode username>`:  Get stats on a leetcode user.
-`$recent <leetcode username>`:  Get the most recent submission from a leetcode user.
-`$track <leetcode username>`:  Track a user. This will cause the bot to announce new submissions from this user.
-`$untrack <leetcode username>`:  Untrack a user.
-`$tracklist`:  List all tracked users.
-`$help`:  Get information on supported commands
+`{T}audit <leetcode username>`:  Get stats on a leetcode user.
+`{T}recent <leetcode username>`:  Get the most recent submission from a leetcode user.
+`{T}track <leetcode username>`:  Track a user. This will cause the bot to announce new submissions from this user.
+`{T}untrack <leetcode username>`:  Untrack a user.
+`{T}tracklist`:  List all tracked users.
+`{T}help`:  Get information on supported commands
 "#,
         )
     }

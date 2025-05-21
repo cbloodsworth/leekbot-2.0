@@ -17,7 +17,6 @@ use crate::lcdb;
 use crate::models;
 
 use rand::rng;
-use rand::seq::SliceRandom;
 
 use anyhow::{Context, Result, anyhow};
 
@@ -256,8 +255,12 @@ async fn check_recent_submissions() -> Result<Vec<models::Submission>> {
         log::info!("[lcbot] Fetching recent problems for {}", user.username);
         let recent_submissions = lcapi::fetch_recently_submitted(&user.username).await?;
         for submission in recent_submissions {
-            lcdb::insert_submission(&submission)?;
-            lcdb::insert_problem(&submission.problem)?;
+            lcdb::insert_submission(&submission)
+                .unwrap_or_else(|err|
+                    log::warn!("[lcbot] Could not insert submission: {submission}: {err}"));
+            lcdb::insert_problem(&submission.problem)
+                .unwrap_or_else(|err|
+                    log::warn!("[lcbot] Could not insert problem: {:?}: {err}", submission.problem));
         }
 
         // Perform the query

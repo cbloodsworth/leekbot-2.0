@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -149,6 +149,11 @@ pub fn insert_submission(submission: &models::Submission) -> Result<()> {
 
     log::debug!("[insert_submission] Inserting submission into Submissions...");
 
+    // If it's already in the cache, don't insert it
+    if !insert_cache_submission(submission)? {
+        return Ok(())
+    }
+
     let query_params = rusqlite::named_params! {
             ":problem_name":   submission.problem.title,
             ":username":       submission.username,
@@ -217,7 +222,7 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
 }
 
 /// Adds the (problem, user) entry into the recent cache if it doesn't exist.
-pub fn insert_cache_submission(submission: &models::Submission) -> Result<()> {
+pub fn insert_cache_submission(submission: &models::Submission) -> Result<bool> {
     let connection = connect()?;
 
     let query_params = rusqlite::named_params! {
@@ -229,14 +234,21 @@ pub fn insert_cache_submission(submission: &models::Submission) -> Result<()> {
 
     // Preparation for the query.
     log::debug!("[insert_cache_submission] caching submission...");
-    connection
+    let result = connection
         .prepare(
-            "INSERT OR IGNORE INTO RecentCache (username, problem_name, timestamp, accepted)
+            "INSERT INTO RecentCache (username, problem_name, timestamp, accepted)
              VALUES (:username, :problem_name, :timestamp, :accepted)",
         )?
-        .execute(query_params)?;
+        .execute(query_params);
 
-    Ok(())
+    if let Err(err) = result {
+        match err.sqlite_error_code() {
+            Some(rusqlite::ErrorCode::ConstraintViolation) => Ok(false),
+            _ => Err(anyhow::anyhow!(err))
+        }
+    } else {
+        Ok(true)
+    }
 }
 
 /// Cleans the cache and returns the removed submissions.

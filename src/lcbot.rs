@@ -28,17 +28,12 @@ impl EventHandler for LeekHandler {
 
         // Display most recent commit on restart.
         if !commands::is_debug_mode() {
-            let commit_msg = || -> Result<String, anyhow::Error> {
-                Ok(git2::Repository::open(".")?
-                    .head()?
-                    .peel_to_commit()?
-                    .message()
-                    .context("no commit message")?
-                    .to_string())
-            }().unwrap_or(String::from("no commit message"));
+            let commit_msg = std::fs::read("commit.txt")
+                .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+                .unwrap_or(String::from("no commit message"));
 
             serenity::model::id::ChannelId::new(channel_id)
-                .say(&ctx.http, format!("LeekBot 2.0 updated: `{commit_msg}`"))
+                .say(&ctx.http, format!("LeekBot 2.0 updated: `{}`", commit_msg.trim()))
                 .await
                 .map_or_else(|err| log::error!("Couldn't send welcome message: {err}"), |_|{});
         }

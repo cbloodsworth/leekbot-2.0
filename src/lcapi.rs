@@ -18,8 +18,15 @@ struct QueryResponse {
     data: Option<Value>,
 }
 
+/// Reaches out to LeetCode to see if `username` has any problems that have been
+/// submitted in the last few days.
 pub async fn fetch_recently_submitted(username: &str) -> Result<Vec<Submission>> {
-    let response = query_user(username).await?;
+    log::trace!("[fetch_recently_submitted] Fetching recently submitted for '{username}'");
+    let response = query_user(username)
+        .await
+        .inspect_err(|err| 
+            log::error!("[fetch_recently_submitted] Couldn't query user '{username}': {err}"))?;
+
     let data = response.data.context("No data found in the response.")?;
 
     let raw_submissions = data

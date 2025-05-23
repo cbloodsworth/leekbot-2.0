@@ -11,7 +11,7 @@ fn connect() -> Result<Connection> {
 
 pub fn initialize_db() -> Result<()> {
     // User table
-    log::debug!("[initialize_db] creating Users table...");
+    log::info!("[initialize_db] creating Users table...");
     connect()?.execute(
         "CREATE TABLE IF NOT EXISTS Users (
             username       TEXT        PRIMARY KEY,
@@ -29,7 +29,7 @@ pub fn initialize_db() -> Result<()> {
     )?;
 
     // Submission table
-    log::debug!("[initialize_db] creating Submissions table...");
+    log::info!("[initialize_db] creating Submissions table...");
     connect()?.execute(
         "CREATE TABLE IF NOT EXISTS Submissions (
             problem_name   TEXT        NOT NULL    REFERENCES Problems(problem_name),
@@ -47,7 +47,7 @@ pub fn initialize_db() -> Result<()> {
     )?;
 
     // Problem table
-    log::debug!("[initialize_db] creating Problems table...");
+    log::info!("[initialize_db] creating Problems table...");
     connect()?.execute(
         "CREATE TABLE IF NOT EXISTS Problems (
             problem_name   TEXT        PRIMARY KEY,
@@ -60,7 +60,7 @@ pub fn initialize_db() -> Result<()> {
     )?;
 
     // Recent Submission Cache
-    log::debug!("[initialize_db] creating RecentCache table...");
+    log::info!("[initialize_db] creating RecentCache table...");
     connect()?.execute(
         "CREATE TABLE IF NOT EXISTS RecentCache (
             problem_name   TEXT        NOT NULL    REFERENCES Problems(problem_name),
@@ -144,15 +144,13 @@ pub fn query_submissions_recent_all(user: &models::User) -> Result<Vec<models::S
     Ok(submissions)
 }
 
-pub fn insert_submission(submission: &models::Submission) -> Result<()> {
+/// Inserts a Submission into the database.
+/// Returns `true` if it was newly added, false otherwise.
+pub fn insert_submission(submission: &models::Submission) -> Result<bool> {
     let connection = connect()?;
 
-    log::debug!("[insert_submission] Inserting submission into Submissions...");
-
-    // If it's already in the cache, don't insert it
-    if !insert_cache_submission(submission)? {
-        return Ok(())
-    }
+    log::trace!("[insert_submission] Inserting submission for {} into Submissions...",
+        submission.problem.title);
 
     let query_params = rusqlite::named_params! {
             ":problem_name":   submission.problem.title,
@@ -163,18 +161,23 @@ pub fn insert_submission(submission: &models::Submission) -> Result<()> {
             ":url":            submission.url,
     };
 
-    connection.prepare(
-        "INSERT INTO Submissions ( problem_name,  username,  language,  timestamp,  accepted,  url)
-         VALUES                  (:problem_name, :username, :language, :timestamp, :accepted, :url)"
-    )?.execute(query_params)?;
-
-    Ok(())
+    connection
+        .prepare(
+            "INSERT INTO Submissions 
+                ( problem_name,  username,  language,  timestamp,  accepted,  url)
+            VALUES 
+                (:problem_name, :username, :language, :timestamp, :accepted, :url)"
+        )?
+        .execute(query_params)
+        .map_or_else(swallow_constraint_violation, |_| Ok(true))
 }
 
 /////*============== RECENT CACHE QUERIES ==============*/
-/// Queries the database for (accepted) submissions that haven't already been announced to the server.
+/// Queries the database for submissions that haven't already been announced to the server.
 pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Submission>> {
     let connection = connect()?;
+    log::trace!("[query_uncached_submissions] Querying {} for uncached submissions...",
+                 user.username);
 
     // Get the current timestamp, approximately
     let current_timestamp = SystemTime::now()
@@ -208,21 +211,24 @@ pub fn query_uncached_submissions(user: &models::User) -> Result<Vec<models::Sub
     )?;
 
     let submissions = stmt
-        .query_map(query_params, |row| models::Submission::try_from(row))
-        .context("No recent submissions...?")? // This might not be the right error msg
+        .query_map(query_params, |row| {
+            models::Submission::try_from(row)
+                .inspect(|sub| 
+                    log::trace!("[query_uncached_submissions] Found uncached submission: {sub}"))
+                .inspect_err(|err| 
+                    log::error!("[query_uncached_submissions] Could not convert row into \
+                                 submission: {err}"))
+            }
+        )?
         .collect::<Result<Vec<models::Submission>, _>>()?;
-
-    // Keep our new cache updated
-    log::info!("[query_submissions_new] Updating submissions cache...");
-    for submission in submissions.iter() {
-        insert_cache_submission(submission)?;
-    }
 
     Ok(submissions)
 }
 
 /// Adds the (problem, user) entry into the recent cache if it doesn't exist.
+/// Returns `true` if it was newly added, false otherwise.
 pub fn insert_cache_submission(submission: &models::Submission) -> Result<bool> {
+    log::trace!("[insert_cache_submission] Inserting submission into the cache.");
     let connection = connect()?;
 
     let query_params = rusqlite::named_params! {
@@ -233,26 +239,18 @@ pub fn insert_cache_submission(submission: &models::Submission) -> Result<bool> 
     };
 
     // Preparation for the query.
-    log::debug!("[insert_cache_submission] caching submission...");
-    let result = connection
+    connection
         .prepare(
             "INSERT INTO RecentCache (username, problem_name, timestamp, accepted)
              VALUES (:username, :problem_name, :timestamp, :accepted)",
         )?
-        .execute(query_params);
-
-    if let Err(err) = result {
-        match err.sqlite_error_code() {
-            Some(rusqlite::ErrorCode::ConstraintViolation) => Ok(false),
-            _ => Err(anyhow::anyhow!(err))
-        }
-    } else {
-        Ok(true)
-    }
+        .execute(query_params)
+        .map_or_else(swallow_constraint_violation, |_| Ok(true))
 }
 
 /// Cleans the cache and returns the removed submissions.
 pub fn clean_cache() -> Result<()> {
+    log::trace!("[clean_cache] Clearing the cache.");
     let connection = connect()?;
 
     // Get the current timestamp, approximately
@@ -298,6 +296,7 @@ impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::User {
 
 /// Gathers all tracked users.
 pub fn query_tracked_users() -> Result<Vec<models::User>> {
+    log::trace!("[query_tracked_users)] Querying all tracked users.");
     let connection = connect()?;
 
     // Preparation for the query.
@@ -308,7 +307,6 @@ pub fn query_tracked_users() -> Result<Vec<models::User>> {
     )?;
 
     // Query!
-    log::info!("[query_tracked_users)] Querying all tracked users.");
     let submissions = stmt
         .query_map([], |row| models::User::try_from(row))
         .context("Could not find any users in the database.")?
@@ -320,7 +318,7 @@ pub fn query_tracked_users() -> Result<Vec<models::User>> {
 pub fn insert_user(user: &models::User) -> Result<()> {
     let connection = connect()?;
 
-    log::info!(
+    log::trace!(
         "[insert_user] Inserting user {} into Users...",
         user.username
     );
@@ -341,13 +339,17 @@ pub fn insert_user(user: &models::User) -> Result<()> {
          VALUES            (:username, :tracked, :easy_solved, :medium_solved, :hard_solved, :total_solved, :ranking, :streak)"
     )?.execute(query_params)?;
 
+    log::info!("User {} is now being tracked.", user.username);
+
     Ok(())
 }
 
 /// Tracks a user by updating the "tracked" field to true.
 ///   Inserts the user if it isn't in the database already.
 pub fn track_user(user: &models::User) -> Result<()> {
+    log::trace!("[track_user] Tracking user {}...", user.username);
     if !user_exists(user)? {
+        log::trace!("[track_user] User '{}' does not already exist, adding to database.", user.username);
         insert_user(user)?;
     }
 
@@ -359,7 +361,8 @@ pub fn track_user(user: &models::User) -> Result<()> {
          WHERE username = ?
         ",
         )?
-        .execute(params![&user.username])?;
+        .execute(params![&user.username])
+        .inspect_err(|err| log::error!("[track_user] Error tracking user '{}': {err}", user.username))?;
 
     Ok(())
 }
@@ -444,6 +447,7 @@ pub fn streak_increment(user: &models::User) -> Result<()> {
 }
 
 pub fn query_streak(user: &models::User) -> Result<u64> {
+    log::trace!("[query_streak] Querying streak for {}...", user.username);
     let connection = connect()?;
     let mut stmt = connection.prepare("SELECT streak FROM Users WHERE username = ?")?;
     Ok(stmt.query_row(params![&user.username], |row| row.get("streak"))?)
@@ -464,10 +468,12 @@ pub fn streak_break(user: &models::User) -> Result<()> {
 }
 
 /////*============== PROBLEM QUERIES ==============*/
-pub fn insert_problem(problem: &models::Problem) -> Result<()> {
+/// Inserts the problem into Problems, or does nothing if it already is there.
+/// Returns `true` if it was newly added, false otherwise.
+pub fn insert_problem(problem: &models::Problem) -> Result<bool> {
     let connection = connect()?;
 
-    log::debug!(
+    log::trace!(
         "[insert_problem] Inserting problem {} into Problems...",
         problem.title
     );
@@ -480,12 +486,11 @@ pub fn insert_problem(problem: &models::Problem) -> Result<()> {
 
     connection
         .prepare(
-            "INSERT OR IGNORE INTO Problems ( problem_name,  problem_link,  difficulty)
+            "INSERT INTO Problems ( problem_name,  problem_link,  difficulty)
          VALUES                         (:problem_name, :problem_link, :difficulty)",
         )?
-        .execute(query_params)?;
-
-    Ok(())
+        .execute(query_params)
+        .map_or_else(swallow_constraint_violation, |_| Ok(true))
 }
 
 /////*============== INTERNAL API ==============*/
@@ -503,13 +508,20 @@ fn user_exists(user: &models::User) -> Result<bool> {
     Ok(exists)
 }
 
+fn swallow_constraint_violation(err: rusqlite::Error) -> Result<bool> {
+    match err.sqlite_error_code() {
+        Some(rusqlite::ErrorCode::ConstraintViolation) => { Ok(false) },
+        _ => Err(err.into())
+    }
+}
+
 pub fn insert_fake_submission(
     user: &models::User,
-    problem_name: &str,
+    problem_name: String,
     accepted: bool,
 ) -> Result<()> {
     let problem = models::Problem {
-        title: problem_name.to_owned(),
+        title: problem_name,
         url: String::from("no_url"),
         difficulty: String::from("no difficulty"),
     };

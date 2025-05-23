@@ -142,20 +142,21 @@ impl Commands {
                 String::from("")
             }
             "untrack" => {
-                let username = parameters
-                    .first()
-                    .context("Expected username for untracking, got none.")?
-                    .to_string();
+                String::from("`untrack` is currently temporarily disabled.")
+                // let username = parameters
+                //     .first()
+                //     .context("Expected username for untracking, got none.")?
+                //     .to_string();
 
-                let user = lcapi::fetch_user(username).await?;
-                lcdb::untrack_user(&user)?;
+                // let user = lcapi::fetch_user(username).await?;
+                // lcdb::untrack_user(&user)?;
 
-                msg.react(
-                    &ctx.http,
-                    serenity::all::ReactionType::Unicode(String::from("✅")),
-                )
-                .await?;
-                String::from("")
+                // msg.react(
+                //     &ctx.http,
+                //     serenity::all::ReactionType::Unicode(String::from("✅")),
+                // )
+                // .await?;
+                // String::from("")
             }
             "help" => Self::get_help(),
             "clanker" => String::from("call me clanker one more mf time"),

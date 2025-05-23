@@ -26,6 +26,23 @@ impl EventHandler for LeekHandler {
         log::info!("Bot is connected and ready!");
         let channel_id = getenv_announcements_channel();
 
+        // Display most recent commit on restart.
+        if !commands::is_debug_mode() {
+            let commit_msg = || -> Result<String, anyhow::Error> {
+                Ok(git2::Repository::open(".")?
+                    .head()?
+                    .peel_to_commit()?
+                    .message()
+                    .context("no commit message")?
+                    .to_string())
+            }().unwrap_or(String::from("no commit message"));
+
+            serenity::model::id::ChannelId::new(channel_id)
+                .say(&ctx.http, format!("LeekBot 2.0 updated: `{commit_msg}`"))
+                .await
+                .map_or_else(|err| log::error!("Couldn't send welcome message: {err}"), |_|{});
+        }
+
         let daily_checker_ctx = ctx.clone();
         tokio::spawn(async move {
             loop {

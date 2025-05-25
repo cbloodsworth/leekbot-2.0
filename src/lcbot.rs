@@ -33,7 +33,7 @@ impl EventHandler for LeekHandler {
                 .unwrap_or(String::from("no commit message"));
 
             serenity::model::id::ChannelId::new(channel_id)
-                .say(&ctx.http, format!("LeekBot 2.0 updated: `{}`", commit_msg.trim()))
+                .say(&ctx.http, format!("LeekBot 2.0 updated: ```\n{}\n```", commit_msg.trim()))
                 .await
                 .map_or_else(|err| log::error!("Couldn't send welcome message: {err}"), |_|{});
         }

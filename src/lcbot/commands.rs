@@ -11,6 +11,16 @@ const MAX_CMD_LENGTH: usize = 12;
 pub struct Commands;
 impl Commands {
     pub async fn run_command(ctx: &serenity::client::Context, msg: &Message) -> Result<String> {
+        let react_ok = async || -> Result<String> {
+            msg.react(
+                &ctx.http,
+                serenity::all::ReactionType::Unicode(String::from("✅")),
+            )
+            .await?;
+
+            Ok(String::from(""))
+        };
+
         // Split the message's content (on whitespace) into:
         // - The command (first token)
         // - Its parameters (all tokens afterwards)
@@ -77,12 +87,7 @@ impl Commands {
                 lcdb::track_user(&user)
                     .inspect_err(|_| log::error!("Could not track user {username}"))?;
 
-                msg.react(
-                    &ctx.http,
-                    serenity::all::ReactionType::Unicode(String::from("✅")),
-                )
-                .await?;
-                String::from("")
+                react_ok().await?
             }
             "untrack" => {
                 String::from("`untrack` is currently temporarily disabled.")
@@ -109,10 +114,6 @@ impl Commands {
                 let (username, pref_changes) = parameters
                     .split_first()
                     .with_context(get_usage)?;
-
-                if pref_changes.is_empty() {
-                    return Err(anyhow!(get_usage()));
-                }
 
                 // Helps against a common pitfall with this command...
                 if pref_changes.contains(&"=") {
@@ -147,8 +148,10 @@ impl Commands {
                             ));
 
                             lcdb::update_user_preferences(&user, &prefs)?;
-                            format!("Updated {username}'s announcement preferences: \
-                                    announce_fail = {state}")
+                            log::info!("Updated {username}'s announcement preferences: \
+                                    announce_fail = {state}");
+
+                            react_ok().await?
                         }
                         Some(("announce_link", state @ ("true" | "false"))) => {
                             prefs.announcement = Some(prefs.announcement.map_or_else(
@@ -161,8 +164,10 @@ impl Commands {
                             ));
 
                             lcdb::update_user_preferences(&user, &prefs)?;
-                            format!("Updated {username}'s announcement preferences: \
-                                    announce_link = {state}")
+                            log::info!("Updated {username}'s announcement preferences: \
+                                    announce_link = {state}");
+
+                            react_ok().await?
                         }
                         Some((cmd @ ("announce_fail" | "announce_link"), state)) => {
                             return Err(anyhow!("Cannot set {cmd} to {state}: \n{}", get_usage()))
@@ -204,11 +209,11 @@ impl Commands {
 
                     let problem = problem_name.join(" ");
 
-                    let output = format!("Inserted fake submission: {problem}");
+                    log::info!("Inserted fake submission: {problem}");
 
                     lcdb::insert_fake_submission(&user, problem, success)?;
 
-                    output
+                    react_ok().await?
                 }
             }
             _ => {

@@ -114,6 +114,12 @@ impl Commands {
                     return Err(anyhow!(get_usage()));
                 }
 
+                // Helps against a common pitfall with this command...
+                if pref_changes.contains(&"=") {
+                    return Err(anyhow!("{}\n (there mustn't be whitespace around the '`=`')", 
+                               get_usage()))
+                }
+
                 // Get the User object
                 let user = match lcdb::query_user(username)? {
                     Some(user) => user,
@@ -121,10 +127,15 @@ impl Commands {
                 };
 
                 let mut prefs = lcdb::query_user_preferences(&user)?.unwrap_or_default();
-                let mut msg = String::new();
+                let mut msgs = Vec::new();
 
                 for change in pref_changes {
-                    msg += &match change.split("=").next_tuple() {
+                    let change_tuple = change
+                        .split("=")
+                        .next_tuple()
+                        .map(|(cmd, state)| (cmd.trim(), state.trim()));
+
+                    msgs.push(match change_tuple {
                         Some(("announce_fail", state @ ("true" | "false"))) => {
                             prefs.announcement = Some(prefs.announcement.map_or_else(
                                 || AnnouncementPreferences {
@@ -154,17 +165,20 @@ impl Commands {
                                     announce_link = {state}")
                         }
                         Some((cmd @ ("announce_fail" | "announce_link"), state)) => {
-                            format!("Cannot set {cmd} to {state}: \n{}", get_usage())
+                            return Err(anyhow!("Cannot set {cmd} to {state}: \n{}", get_usage()))
                         }
                         Some((unknown_cmd, _)) => {
-                            format!("Unknown announcement preference: {unknown_cmd} \n\
-                                    {}", get_usage())
+                            return Err(anyhow!("Unknown announcement preference: {unknown_cmd} \n\
+                                                {}", get_usage()))
                         }
-                        None => format!("Unknown announcement preference. \n{}", get_usage()),
-                    }
+                        None => {
+                            return Err(anyhow!("Unknown announcement preference. \n{}", 
+                                               get_usage()))
+                        }
+                    })
                 }
 
-                msg
+                msgs.join("\n")
             }
             "help" => Self::get_help(),
             "clanker" => String::from("call me clanker one more mf time"),

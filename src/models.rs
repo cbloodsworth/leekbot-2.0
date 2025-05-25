@@ -39,6 +39,26 @@ impl std::fmt::Display for User {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct UserPreferences {
+    pub tracked: bool,
+    pub announcement: Option<AnnouncementPreferences>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AnnouncementPreferences {
+    pub announce_failures: bool,
+    pub has_submission_link: bool,
+}
+
+pub const DEFAULT_USER_PREFERENCES: UserPreferences = UserPreferences {
+    tracked: true,
+    announcement: Some(AnnouncementPreferences {
+        has_submission_link: true,
+        announce_failures: false
+    }),
+};
+
 #[derive(Debug)]
 pub struct Submission {
     pub problem: Problem,

@@ -28,7 +28,7 @@ impl Commands {
                     .context("Expected username for audit, got none.")?
                     .to_string();
 
-                lcapi::fetch_user(username).await.map(|user| {
+                lcapi::fetch_user(&username).await.map(|user| {
                     let tracked = lcdb::is_tracked(&user).unwrap();
                     let output = format!(
                         "{}\nThis user is {}currently being tracked.",
@@ -63,8 +63,9 @@ impl Commands {
                     .context("Expected username for tracking, got none.")?
                     .to_string();
 
-                let user = lcapi::fetch_user(username).await?;
-                lcdb::track_user(&user)?;
+                let user = lcapi::fetch_user(&username).await?;
+                lcdb::track_user(&user)
+                    .inspect_err(|_| log::error!("Could not track user {username}"))?;
 
                 msg.react(
                     &ctx.http,
@@ -105,7 +106,7 @@ impl Commands {
                         .context("Expected username for tracking, got none.")?
                         .to_string();
 
-                    let user = lcapi::fetch_user(username).await?;
+                    let user = lcapi::fetch_user(&username).await?;
 
                     let success = parameters
                         .get(1)

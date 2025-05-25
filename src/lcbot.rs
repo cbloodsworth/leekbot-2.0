@@ -92,7 +92,9 @@ impl EventHandler for LeekHandler {
             let response = match Commands::run_command(&ctx, &msg).await {
                 Ok(message) => message,
                 Err(err) => {
-                    format!("Error: {}", err)
+                    log::error!("{err:?}");
+                    String::from("There was an internal error, so I couldn't process your request. \
+                                  Sorry!")
                 }
             };
 
@@ -143,9 +145,8 @@ pub async fn run_leekbot() -> Result<()> {
     Ok(())
 }
 
-/// Checks recent Leetcode submissions for all tracked users,
-///   compares with the ones represented in the recency cache,
-///   and returns the ones that should be announced.
+/// Checks recent Leetcode submissions for all tracked users, compares with the ones represented in
+/// the recency cache, and returns the ones that may be announced.
 ///
 /// Intended to be run regularly.
 async fn check_recent_submissions() -> Result<Vec<models::Submission>> {
@@ -244,7 +245,9 @@ async fn sleep_until_midnight_utc() {
     sleep(sleep_duration).await;
 }
 
-/// Announces a submission and adds it to the RecentCache.
+/// Potentially announces a submission and adds it to the RecentCache.
+///
+/// Note that some users may not want their submissions announced; we reflect that here.
 async fn announce_submission(
     submission: &models::Submission,
     ctx: &serenity::client::Context,
@@ -252,48 +255,84 @@ async fn announce_submission(
 {
     log::trace!("[announce_submission] Updating RecentCache...");
 
-    let user = &submission.username;
+    let username = &submission.username;
     let problem = &submission.problem.title;
 
-    match lcdb::insert_cache_submission(submission) {
-        Ok(true) => log::debug!("[announce_submission] Added {user}'s submission '{problem}' to \
-                                 recent cache."),
+    // Get the User object
+    let Ok(Some(user)) = lcdb::query_user(&submission.username) else {
+        log::error!("[announce_submission] Attempted to announce submission for {}, but
+                     couldn't find the user in the database.", submission.username);
+        return;
+    };
 
-        Ok(false) => log::error!("[announce_submission] Didn't add {user}'s submission '{problem}' to \
-                                  recent cache: it was (unexpectedly) already there."),
+    // Get the UserPreferences object for this user
+    let Ok(Some(prefs)) = lcdb::query_user_preferences(&user) else {
+        log::error!("[announce_submission] Attempted to gather preferences for {}, but
+                     couldn't find them in the database.", user.username);
+        return;
+    };
+
+    match lcdb::insert_cache_submission(submission) {
+        Ok(true) => log::debug!("[announce_submission] Added {username}'s submission '{problem}' \
+                                 to recent cache."),
+
+        Ok(false) => log::error!("[announce_submission] Didn't add {username}'s submission \
+                                  '{problem}' to recent cache: it was (unexpectedly) already \
+                                  there."),
 
         Err(err) => log::error!("[announce_submission] Couldn't insert cache submission: {err}"),
     }
 
-    log::info!("Sending message for {user}'s new submission: {problem}");
+    if prefs.announcement.is_some() {
 
-    if let Err(err) = serenity::model::id::ChannelId::new(channel_id)
-        .say(
-            &ctx.http,
-            submission_announcement(submission),
-        )
-        .await
-    {
-        log::error!("Error sending scheduled message: {}", err);
+        let Some(msg) = submission_announcement(submission, prefs) else {
+            log::info!("{username} has a new submission for {problem}, but they don't want to \
+                        have it announced (likely due to failure).");
+            return;
+        };
+
+        log::info!("Sending message for {username}'s new submission: {problem}");
+        if let Err(err) = serenity::model::id::ChannelId::new(channel_id)
+            .say(&ctx.http, msg)
+            .await
+        {
+            log::error!("Error sending scheduled message: {}", err);
+        }
+    } else {
+        log::info!("{user} submitted a new problem '{problem}', but prefers to move in silence.")
     }
 }
 
-/// Formats a submission announcement String from a Submission.
-fn submission_announcement(submission: &models::Submission) -> String {
+/// Creates a submission announcement String from a Submission.
+fn submission_announcement(
+    submission: &models::Submission,
+    prefs: models::UserPreferences
+) -> Option<String>
+{
+    let has_link = prefs.announcement?.has_submission_link;
+    let announce_failures = prefs.announcement?.announce_failures;
+
     if submission.accepted {
-        format!(
-            "✅ {} just completed [{}]({})!\n\t{}",
-            submission.username, submission.problem.title, submission.problem.url, submission.url
-        )
+        let mut msg = format!(
+            "✅ {} just completed [{}]({})!",
+            submission.username, submission.problem.title, submission.problem.url);
+
+        if has_link {
+            msg += &format!("\n\t{}", submission.url);
+        }
+
+        Some(msg)
     } else {
-        format!(
-            "❌ {} just submitted an attempt for [{}]({}), but {}\n\t{}",
-            submission.username,
-            submission.problem.title,
-            submission.problem.url,
-            generate_misattempt_msg(),
-            submission.url
-        )
+        announce_failures.then(|| {
+            format!(
+                "❌ {} just submitted an attempt for [{}]({}), but {}\n\t{}",
+                submission.username,
+                submission.problem.title,
+                submission.problem.url,
+                generate_misattempt_msg(),
+                submission.url
+            )
+        })
     }
 }
 

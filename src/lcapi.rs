@@ -78,7 +78,7 @@ pub async fn fetch_recently_completed(username: &str) -> Result<Vec<Submission>>
 }
 
 // i wont lie this is a hot mess
-pub async fn fetch_user(username: String) -> Result<User> {
+pub async fn fetch_user(username: &str) -> Result<User> {
     let response = query_user(&username).await?;
     let data = response.data.context("No data found in the response.")?;
 
@@ -112,7 +112,7 @@ pub async fn fetch_user(username: String) -> Result<User> {
         .context("Could not convert ranking to u64.")?;
 
     Ok(User {
-        username,
+        username: username.to_owned(),
         ranking,
         total_solved: extract_u64_from_json(&num_solved_array[0], "count")
             .context("Couldn't get total_solved")?,

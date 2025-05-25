@@ -51,6 +51,10 @@ pub struct AnnouncementPreferences {
     pub has_submission_link: bool,
 }
 
+impl Default for UserPreferences {
+    fn default() -> Self { DEFAULT_USER_PREFERENCES }
+}
+
 pub const DEFAULT_USER_PREFERENCES: UserPreferences = UserPreferences {
     tracked: true,
     announcement: Some(AnnouncementPreferences {

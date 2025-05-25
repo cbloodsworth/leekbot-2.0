@@ -140,11 +140,11 @@ pub fn query_submissions_recent_all(user: &models::User) -> DBResult<Vec<models:
     let mut stmt = connection.prepare(
         "SELECT s.username, s.timestamp, s.accepted,
                     p.problem_name, p.problem_link, p.difficulty
-             FROM Submissions s
-             JOIN Problems p ON s.problem_name = p.problem_name
-             WHERE s.username = :username
-               and :current_timestamp - s.timestamp < :recent_threshold
-             ORDER BY s.timestamp DESC",
+         FROM Submissions s
+         JOIN Problems p ON s.problem_name = p.problem_name
+         WHERE s.username = :username
+           AND :current_timestamp - s.timestamp < :recent_threshold
+         ORDER BY s.timestamp DESC",
     )?;
 
     // Query!
@@ -440,7 +440,7 @@ pub fn is_tracked(user: &models::User) -> DBResult<bool> {
 
 /// Retrieves a user's preferences from the database.
 ///
-/// TODO: Consider having this function take a username string
+/// Returns None if no such `user` is in the database.
 pub fn query_user_preferences(user: &models::User) -> DBResult<Option<models::UserPreferences>> {
     let connection = connect()?;
     connection
@@ -466,13 +466,18 @@ pub fn update_user_preferences(
             ":announce_link": prefs.announcement.as_ref().is_some_and(|a| a.has_submission_link)
     };
 
-    connection.prepare(
-        "UPDATE UserPrefs p SET tracked = :tracked,
-                                announce = :announce,
-                                announce_fail = :announce_fail,
-                                announce_link = :announce_link
-         WHERE p.username = :username"
-    )?.execute(query_params)?;
+    connection
+        .prepare(
+            "UPDATE UserPrefs SET
+                tracked = :tracked,
+                announce = :announce,
+                announce_fail = :announce_fail,
+                announce_link = :announce_link
+             WHERE username = :username"
+        )?
+        .execute(query_params)
+        .inspect_err(|err| log::error!("[update_user_preferences] Could not update user \
+                                        preferences: {err}"))?;
 
     Ok(())
 }
@@ -525,12 +530,13 @@ pub fn is_active(user: &models::User) -> DBResult<bool> {
              FROM Users u
              JOIN UserPrefs   p ON p.username = u.username
              JOIN Submissions s ON s.username = u.username
-             WHERE u.username = :username 
+             WHERE u.username = :username
                and p.tracked = 1
                and s.accepted = 1
                and :current_timestamp - s.timestamp < :DAY_IN_MILLIS",
         )?
-        .exists(query_params)?;
+        .exists(query_params)
+        .inspect_err(|err| log::error!("[is_active] Could not check if user was active: {err}"))?;
 
     Ok(is_tracked)
 }

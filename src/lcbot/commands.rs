@@ -1,7 +1,9 @@
 use crate::lcapi;
 use crate::lcdb;
+use crate::models::AnnouncementPreferences;
 
 use anyhow::{Context, Result, anyhow};
+use itertools::Itertools;
 use serenity::model::channel::Message;
 
 const MAX_CMD_LENGTH: usize = 12;
@@ -28,16 +30,24 @@ impl Commands {
                     .context("Expected username for audit, got none.")?
                     .to_string();
 
-                lcapi::fetch_user(&username).await.map(|user| {
-                    let tracked = lcdb::is_tracked(&user).unwrap();
-                    let output = format!(
-                        "{}\nThis user is {}currently being tracked.",
-                        user,
-                        if tracked { "" } else { "not " }
-                    );
+                let user = lcapi::fetch_user(&username).await?;
+                let mut output = format!("{user}\n");
+                if let Some(prefs) = lcdb::query_user_preferences(&user)? {
+                    if let Some(announcement_prefs) = prefs.announcement {
+                        output += "This user is currently being tracked.\n";
+                        output += &format!("Failures are {}announced.\n",
+                            if announcement_prefs.announce_failures { "" } else { "not " }
+                        );
+                        output += &format!("Submission links are {}abled.\n",
+                            if announcement_prefs.has_submission_link { "en" } else { "dis" }
+                        )
+                    }
+                }
+                else {
+                    output += "This user is not currently being tracked.";
+                }
 
-                    output
-                })?
+                output
             }
             "recent" => Self::get_recently_completed(parameters[0]).await?,
             "tracklist" => {
@@ -90,6 +100,71 @@ impl Commands {
                 // )
                 // .await?;
                 // String::from("")
+            }
+            "prefs" => {
+                let get_usage = || format!("Expected usage: `{}prefs <username> \
+                                            [announce_fail|announce_link]=[true|false]`",
+                                            getenv_call_token());
+
+                let (username, pref_changes) = parameters
+                    .split_first()
+                    .with_context(get_usage)?;
+
+                if pref_changes.is_empty() {
+                    return Err(anyhow!(get_usage()));
+                }
+
+                // Get the User object
+                let user = match lcdb::query_user(username)? {
+                    Some(user) => user,
+                    None => lcapi::fetch_user(username).await?
+                };
+
+                let mut prefs = lcdb::query_user_preferences(&user)?.unwrap_or_default();
+                let mut msg = String::new();
+
+                for change in pref_changes {
+                    msg += &match change.split("=").next_tuple() {
+                        Some(("announce_fail", state @ ("true" | "false"))) => {
+                            prefs.announcement = Some(prefs.announcement.map_or_else(
+                                || AnnouncementPreferences {
+                                    announce_failures: state == "true",
+                                    has_submission_link: false },
+                                |a| AnnouncementPreferences {
+                                    announce_failures: state == "true",
+                                    has_submission_link: a.has_submission_link }
+                            ));
+
+                            lcdb::update_user_preferences(&user, &prefs)?;
+                            format!("Updated {username}'s announcement preferences: \
+                                    announce_fail = {state}")
+                        }
+                        Some(("announce_link", state @ ("true" | "false"))) => {
+                            prefs.announcement = Some(prefs.announcement.map_or_else(
+                                || AnnouncementPreferences {
+                                    announce_failures: false,
+                                    has_submission_link: state == "true"},
+                                |a| AnnouncementPreferences {
+                                    announce_failures: a.announce_failures,
+                                    has_submission_link: state == "true"}
+                            ));
+
+                            lcdb::update_user_preferences(&user, &prefs)?;
+                            format!("Updated {username}'s announcement preferences: \
+                                    announce_link = {state}")
+                        }
+                        Some((cmd @ ("announce_fail" | "announce_link"), state)) => {
+                            format!("Cannot set {cmd} to {state}: \n{}", get_usage())
+                        }
+                        Some((unknown_cmd, _)) => {
+                            format!("Unknown announcement preference: {unknown_cmd} \n\
+                                    {}", get_usage())
+                        }
+                        None => format!("Unknown announcement preference. \n{}", get_usage()),
+                    }
+                }
+
+                msg
             }
             "help" => Self::get_help(),
             "clanker" => String::from("call me clanker one more mf time"),
@@ -163,16 +238,17 @@ impl Commands {
     /// Gets a help string. Should be updated after a new command is added
     /// TODO: Generate automatically?
     pub fn get_help() -> String {
-        let T = getenv_call_token();
+        let t = getenv_call_token();
         format!(
             r#"
 **Command List:**
-`{T}audit <leetcode username>`:  Get stats on a leetcode user.
-`{T}recent <leetcode username>`:  Get the most recent submission from a leetcode user.
-`{T}track <leetcode username>`:  Track a user. This will cause the bot to announce new submissions from this user.
-`{T}untrack <leetcode username>`:  Untrack a user.
-`{T}tracklist`:  List all tracked users.
-`{T}help`:  Get information on supported commands
+`{t}audit <leetcode username>`:  Get stats on a leetcode user.
+`{t}recent <leetcode username>`:  Get the most recent submission from a leetcode user.
+`{t}track <leetcode username>`:  Track a user. This will cause the bot to begin tracking submissions for this user.
+`{t}untrack <leetcode username>`:  Untrack a user.
+`{t}prefs <leetcode username>`: Modify announcement preferences for a user.
+`{t}tracklist`:  List all tracked users.
+`{t}help`:  Get information on supported commands
 "#,
         )
     }

@@ -92,9 +92,8 @@ impl EventHandler for LeekHandler {
             let response = match Commands::run_command(&ctx, &msg).await {
                 Ok(message) => message,
                 Err(err) => {
-                    log::error!("{err:?}");
-                    String::from("There was an internal error, so I couldn't process your request. \
-                                  Sorry!")
+                    log::error!("{err}");
+                    format!("Error: {err}")
                 }
             };
 

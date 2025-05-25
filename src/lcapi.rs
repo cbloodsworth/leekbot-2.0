@@ -79,7 +79,7 @@ pub async fn fetch_recently_completed(username: &str) -> Result<Vec<Submission>>
 
 // i wont lie this is a hot mess
 pub async fn fetch_user(username: &str) -> Result<User> {
-    let response = query_user(&username).await?;
+    let response = query_user(username).await?;
     let data = response.data.context("No data found in the response.")?;
 
     // Retrieve user, or raise error if it doesn't exist
@@ -97,7 +97,7 @@ pub async fn fetch_user(username: &str) -> Result<User> {
     // Get the number of solved problems array
     let num_solved_array = user
         .get("submitStats")
-        .context(err_cant_get("submission statistics", &username))?
+        .context(err_cant_get("submission statistics", username))?
         .get("acSubmissionNum")
         .context("Couldn't retrieve submission statistics.")?
         .as_array()
@@ -105,9 +105,9 @@ pub async fn fetch_user(username: &str) -> Result<User> {
 
     let ranking = user
         .get("profile")
-        .context(err_cant_get("profile", &username))?
+        .context(err_cant_get("profile", username))?
         .get("ranking")
-        .context(err_cant_get("ranking", &username))?
+        .context(err_cant_get("ranking", username))?
         .as_u64()
         .context("Could not convert ranking to u64.")?;
 

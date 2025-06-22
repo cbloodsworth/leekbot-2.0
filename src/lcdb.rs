@@ -5,6 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::{self, AnnouncementPreferences};
 
+mod schema;
+use schema::*;
+
 type DBResult<T> = Result<T, rusqlite::Error>;
 
 fn connect() -> DBResult<Connection> {
@@ -14,81 +17,27 @@ fn connect() -> DBResult<Connection> {
 pub fn initialize_db() -> DBResult<()> {
     // User table
     log::info!("[initialize_db] creating Users table...");
-    connect()?.execute(
-        "CREATE TABLE IF NOT EXISTS Users (
-            username       TEXT        PRIMARY KEY,
-
-            easy_solved    INTEGER     NOT NULL,
-            medium_solved  INTEGER     NOT NULL,
-            hard_solved    INTEGER     NOT NULL,
-            total_solved   INTEGER     NOT NULL,
-
-            ranking        INTEGER     NOT NULL,
-            streak         INTEGER     NOT NULL
-        )",
-        [],
-    )?;
+    connect()?.execute(USER_SCHEMA, [])?;
 
     // Submission table
     log::info!("[initialize_db] creating Submissions table...");
-    connect()?.execute(
-        "CREATE TABLE IF NOT EXISTS Submissions (
-            problem_name   TEXT        NOT NULL    REFERENCES Problems(problem_name),
-
-            username       TEXT        NOT NULL    REFERENCES Users(username),
-            language       TEXT        NOT NULL,
-            timestamp      TIMESTAMP   NOT NULL,
-            accepted       BOOLEAN     NOT NULL,
-
-            url TEXT        NOT NULL,
-
-            UNIQUE(problem_name, username, timestamp)
-        )",
-        [],
-    )?;
+    connect()?.execute(SUBMISSIONS_SCHEMA, [])?;
 
     // Problem table
     log::info!("[initialize_db] creating Problems table...");
-    connect()?.execute(
-        "CREATE TABLE IF NOT EXISTS Problems (
-            problem_name   TEXT        PRIMARY KEY,
-            problem_link   TEXT        NOT NULL,
-            difficulty     TEXT        NOT NULL,
-
-            UNIQUE(problem_name, problem_link, difficulty)
-        )",
-        [],
-    )?;
+    connect()?.execute(PROBLEMS_SCHEMA, [])?;
 
     // Recent Submission Cache
     log::info!("[initialize_db] creating RecentCache table...");
-    connect()?.execute(
-        "CREATE TABLE IF NOT EXISTS RecentCache (
-            problem_name   TEXT        NOT NULL    REFERENCES Problems(problem_name),
-            username       TEXT        NOT NULL    REFERENCES Users(username),
-            timestamp      TIMESTAMP   NOT NULL,
-            accepted       BOOLEAN     NOT NULL,
-
-            UNIQUE (problem_name, username, timestamp, accepted)
-        )",
-        [],
-    )?;
+    connect()?.execute(RECENT_CACHE_SCHEMA, [])?;
 
     // UserPreferences
     log::info!("[initialize_db] creating UserPrefs table...");
-    connect()?.execute(
-        "CREATE TABLE IF NOT EXISTS UserPrefs (
-            username          TEXT        NOT NULL    REFERENCES Users(username),
+    connect()?.execute(USER_PREFS_SCHEMA, [])?;
 
-            tracked           BOOLEAN     NOT NULL,
-            announce          BOOLEAN     NOT NULL,
-            announce_fail     BOOLEAN     NOT NULL,
-            announce_link     BOOLEAN     NOT NULL,
-
-            UNIQUE (username)
-        )",
-        [],
-    )?;
+    // UserCoins
+    log::info!("[initialize_db] creating UserCoins table...");
+    connect()?.execute(USER_COINS_SCHEMA, [])?;
 
     Ok(())
 }

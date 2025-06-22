@@ -28,9 +28,7 @@ impl Commands {
         // Skip the first letter for the command: it's the call token
         let input = String::from(&msg.content[1..]); 
         let split_tokens = input.split_whitespace().collect::<Vec<_>>();
-        let (&[command], parameters) = split_tokens.split_at(1) else {
-            return Err(anyhow!("easd"));
-        };
+        let (&[command], parameters) = split_tokens.split_at(1) else {unreachable!()};
 
         let cmd = CommandInstance { msg, ctx, command, parameters };
 

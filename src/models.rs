@@ -84,20 +84,22 @@ pub struct Problem {
 
 impl std::fmt::Display for Submission {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let title = &self.problem.title;
+        let submission_url = &self.url;
+        let problem_url = &self.problem.url;
+        let accepted = if self.accepted {"✅"} else {"❌"};
+        log::info!("{}", self.timestamp as i64);
+        let timestamp = DateTime::from_timestamp_millis(self.timestamp as i64)
+            .unwrap_or_default()
+            .to_rfc2822();
+        let language = &self.language;
         write!(
             f,
-            "**Submission**: {}\n\
-            https://leetcode.com/problems/{}\n\
-            \tAccepted?: *{}*\n\
-            \tURL:       {} \n\
-            \tTimestamp: {} \n\
-            \tLanguage: `{}`",
-            self.problem.title,
-            self.problem.url,
-            self.url,
-            self.accepted,
-            DateTime::from_timestamp(self.timestamp as i64, 0).unwrap_or_default(),
-            self.language
+            "**Submission**: [{title}](https://leetcode.com/problems/{problem_url})\n\
+            \tAccepted?: {accepted}\n\
+            \tURL:       {submission_url} \n\
+            \tTimestamp: {timestamp} \n\
+            \tLanguage: `{language}`",
         )
     }
 }

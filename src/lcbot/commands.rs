@@ -8,18 +8,18 @@ use serenity::model::channel::Message;
 
 const MAX_CMD_LENGTH: usize = 12;
 
+struct CommandInstance<'a> {
+    msg: &'a Message,
+    ctx: &'a serenity::client::Context,
+
+    #[allow(dead_code, reason="Just because it's never used doesn't mean it's never needed :)")]
+    command: &'a str,
+    parameters: &'a [&'a str],
+}
+
 pub struct Commands;
 impl Commands {
     pub async fn run_command(ctx: &serenity::client::Context, msg: &Message) -> Result<String> {
-        let react_ok = async || -> Result<String> {
-            msg.react(
-                &ctx.http,
-                serenity::all::ReactionType::Unicode(String::from("✅")),
-            )
-            .await?;
-
-            Ok(String::from(""))
-        };
 
         // Split the message's content (on whitespace) into:
         // - The command (first token)
@@ -32,190 +32,19 @@ impl Commands {
             return Err(anyhow!("easd"));
         };
 
+        let cmd = CommandInstance { msg, ctx, command, parameters };
+
         // Execute the command
         let result: String = match command {
-            "audit" => {
-                let username = parameters
-                    .first()
-                    .context("Expected username for audit, got none.")?
-                    .to_string();
-
-                let user = lcapi::fetch_user(&username).await?;
-                let mut output = format!("{user}\n");
-                if let Some(prefs) = lcdb::query_user_preferences(&user)? {
-                    if let Some(announcement_prefs) = prefs.announcement {
-                        output += "This user is currently being tracked.\n";
-                        output += &format!("Failures are {}announced.\n",
-                            if announcement_prefs.announce_failures { "" } else { "not " }
-                        );
-                        output += &format!("Submission links are {}abled.\n",
-                            if announcement_prefs.has_submission_link { "en" } else { "dis" }
-                        )
-                    }
-                }
-                else {
-                    output += "This user is not currently being tracked.";
-                }
-
-                output
-            }
-            "recent" => Self::get_recently_completed(parameters[0]).await?,
-            "tracklist" => {
-                let mut output = String::from("**Tracked users:**");
-                let users = lcdb::query_tracked_users();
-                match users {
-                    Ok(users) => {
-                        for user in users {
-                            output += "\n\t";
-                            output += &user.username;
-                        }
-                    }
-                    Err(err) => {
-                        output = format!("Error retrieving tracklist: {err}");
-                    }
-                }
-
-                output
-            }
-            "track" => {
-                let username = parameters
-                    .first()
-                    .context("Expected username for tracking, got none.")?
-                    .to_string();
-
-                let user = lcapi::fetch_user(&username).await?;
-                lcdb::track_user(&user)
-                    .inspect_err(|_| log::error!("Could not track user {username}"))?;
-
-                react_ok().await?
-            }
-            "untrack" => {
-                String::from("`untrack` is currently temporarily disabled.")
-                // let username = parameters
-                //     .first()
-                //     .context("Expected username for untracking, got none.")?
-                //     .to_string();
-
-                // let user = lcapi::fetch_user(username).await?;
-                // lcdb::untrack_user(&user)?;
-
-                // msg.react(
-                //     &ctx.http,
-                //     serenity::all::ReactionType::Unicode(String::from("✅")),
-                // )
-                // .await?;
-                // String::from("")
-            }
-            "prefs" => {
-                let get_usage = || format!("Expected usage: `{}prefs <username> \
-                                            [announce_fail|announce_link]=[true|false]`",
-                                            getenv_call_token());
-
-                let (username, pref_changes) = parameters
-                    .split_first()
-                    .with_context(get_usage)?;
-
-                // Helps against a common pitfall with this command...
-                if pref_changes.contains(&"=") {
-                    return Err(anyhow!("{}\n (there mustn't be whitespace around the '`=`')", 
-                               get_usage()))
-                }
-
-                // Get the User object
-                let user = match lcdb::query_user(username)? {
-                    Some(user) => user,
-                    None => lcapi::fetch_user(username).await?
-                };
-
-                let mut prefs = lcdb::query_user_preferences(&user)?.unwrap_or_default();
-                let mut msgs = Vec::new();
-
-                for change in pref_changes {
-                    let change_tuple = change
-                        .split("=")
-                        .next_tuple()
-                        .map(|(cmd, state)| (cmd.trim(), state.trim()));
-
-                    msgs.push(match change_tuple {
-                        Some(("announce_fail", state @ ("true" | "false"))) => {
-                            prefs.announcement = Some(prefs.announcement.map_or_else(
-                                || AnnouncementPreferences {
-                                    announce_failures: state == "true",
-                                    has_submission_link: false },
-                                |a| AnnouncementPreferences {
-                                    announce_failures: state == "true",
-                                    has_submission_link: a.has_submission_link }
-                            ));
-
-                            lcdb::update_user_preferences(&user, &prefs)?;
-                            log::info!("Updated {username}'s announcement preferences: \
-                                    announce_fail = {state}");
-
-                            react_ok().await?
-                        }
-                        Some(("announce_link", state @ ("true" | "false"))) => {
-                            prefs.announcement = Some(prefs.announcement.map_or_else(
-                                || AnnouncementPreferences {
-                                    announce_failures: false,
-                                    has_submission_link: state == "true"},
-                                |a| AnnouncementPreferences {
-                                    announce_failures: a.announce_failures,
-                                    has_submission_link: state == "true"}
-                            ));
-
-                            lcdb::update_user_preferences(&user, &prefs)?;
-                            log::info!("Updated {username}'s announcement preferences: \
-                                    announce_link = {state}");
-
-                            react_ok().await?
-                        }
-                        Some((cmd @ ("announce_fail" | "announce_link"), state)) => {
-                            return Err(anyhow!("Cannot set {cmd} to {state}: \n{}", get_usage()))
-                        }
-                        Some((unknown_cmd, _)) => {
-                            return Err(anyhow!("Unknown announcement preference: {unknown_cmd} \n\
-                                                {}", get_usage()))
-                        }
-                        None => {
-                            return Err(anyhow!("Unknown announcement preference. \n{}", 
-                                               get_usage()))
-                        }
-                    })
-                }
-
-                msgs.join("\n")
-            }
+                "audit" => cmd.audit().await?,
+               "recent" => Self::get_recently_completed(parameters[0]).await?,
+            "tracklist" => cmd.tracklist().await?,
+                "track" => cmd.track().await?,
+              "untrack" => cmd.untrack().await?,
+            "prefs" => cmd.prefs().await?,
             "help" => Self::get_help(),
             "clanker" => String::from("call me clanker one more mf time"),
-            "insert" => {
-                if !is_debug_mode() {
-                    String::from("This command is only available in debug mode.")
-                } else {
-                    let (params, problem_name) = parameters.split_at_checked(2).context(
-                        "Expected usage: `!insert <username> <success|failure> <problem_name>`",
-                    )?;
-
-                    let username = params
-                        .first()
-                        .context("Expected username for tracking, got none.")?
-                        .to_string();
-
-                    let user = lcapi::fetch_user(&username).await?;
-
-                    let success = parameters
-                        .get(1)
-                        .context("Expected problem result (success | failure), got none.")?
-                        .eq(&"success");
-
-                    let problem = problem_name.join(" ");
-
-                    log::info!("Inserted fake submission: {problem}");
-
-                    lcdb::insert_fake_submission(&user, problem, success)?;
-
-                    react_ok().await?
-                }
-            }
+            "insert" => cmd.insert().await?,
             _ => {
                 if Commands::is_valid_cmd(command) {
                     log::info!("User submitted unknown command: {}", command);
@@ -241,6 +70,203 @@ impl Commands {
                 .first()
                 .context(format!("No recently completed problems for {}", username))?
         ))
+    }
+}
+
+impl CommandInstance<'_> {
+    async fn audit(&self) -> Result<String> {
+        let username = self.parameters
+            .first()
+            .context("Expected username for audit, got none.")?
+            .to_string();
+
+        let user = lcapi::fetch_user(&username).await?;
+        let mut output = format!("{user}\n");
+        if let Some(prefs) = lcdb::query_user_preferences(&user)? {
+            if let Some(announcement_prefs) = prefs.announcement {
+                output += "This user is currently being tracked.\n";
+                output += &format!("Failures are {}announced.\n",
+                    if announcement_prefs.announce_failures { "" } else { "not " }
+                );
+                output += &format!("Submission links are {}abled.\n",
+                    if announcement_prefs.has_submission_link { "en" } else { "dis" }
+                )
+            }
+        }
+        else {
+            output += "This user is not currently being tracked.";
+        }
+
+        Ok(output)
+    }
+
+    async fn insert(&self) -> Result<String> {
+        if !is_debug_mode() {
+            Ok(String::from("This command is only available in debug mode."))
+        } else {
+            let (params, problem_name) = self.parameters.split_at_checked(2).context(
+                "Expected usage: `!insert <username> <success|failure> <problem_name>`",
+            )?;
+
+            let username = params
+                .first()
+                .context("Expected username for tracking, got none.")?
+                .to_string();
+
+            let user = lcapi::fetch_user(&username).await?;
+
+            let success = self.parameters
+                .get(1)
+                .context("Expected problem result (success | failure), got none.")?
+                .eq(&"success");
+
+            let problem = problem_name.join(" ");
+
+            log::info!("Inserted fake submission: {problem}");
+
+            lcdb::insert_fake_submission(&user, problem, success)?;
+
+            self.react_ok().await
+        }
+    }
+
+    async fn prefs(&self) -> Result<String> {
+        let get_usage = || format!("Expected usage: `{}prefs <username> \
+                                    [announce_fail|announce_link]=[true|false]`",
+                                    getenv_call_token());
+
+        let (username, pref_changes) = self.parameters
+            .split_first()
+            .with_context(get_usage)?;
+
+        // Helps against a common pitfall with this command...
+        if pref_changes.contains(&"=") {
+            return Err(anyhow!("{}\n (there mustn't be whitespace around the '`=`')", 
+                        get_usage()))
+        }
+
+        // Get the User object
+        let user = match lcdb::query_user(username)? {
+            Some(user) => user,
+            None => lcapi::fetch_user(username).await?
+        };
+
+        let mut prefs = lcdb::query_user_preferences(&user)?.unwrap_or_default();
+        let mut msgs = Vec::new();
+
+        for change in pref_changes {
+            let change_tuple = change
+                .split("=")
+                .next_tuple()
+                .map(|(cmd, state)| (cmd.trim(), state.trim()));
+
+            msgs.push(match change_tuple {
+                Some(("announce_fail", state @ ("true" | "false"))) => {
+                    prefs.announcement = Some(prefs.announcement.map_or_else(
+                        || AnnouncementPreferences {
+                            announce_failures: state == "true",
+                            has_submission_link: false },
+                        |a| AnnouncementPreferences {
+                            announce_failures: state == "true",
+                            has_submission_link: a.has_submission_link }
+                    ));
+
+                    lcdb::update_user_preferences(&user, &prefs)?;
+                    log::info!("Updated {username}'s announcement preferences: \
+                            announce_fail = {state}");
+
+                    self.react_ok().await?
+                }
+                Some(("announce_link", state @ ("true" | "false"))) => {
+                    prefs.announcement = Some(prefs.announcement.map_or_else(
+                        || AnnouncementPreferences {
+                            announce_failures: false,
+                            has_submission_link: state == "true"},
+                        |a| AnnouncementPreferences {
+                            announce_failures: a.announce_failures,
+                            has_submission_link: state == "true"}
+                    ));
+
+                    lcdb::update_user_preferences(&user, &prefs)?;
+                    log::info!("Updated {username}'s announcement preferences: \
+                            announce_link = {state}");
+
+                    self.react_ok().await?
+                }
+                Some((cmd @ ("announce_fail" | "announce_link"), state)) => {
+                    return Err(anyhow!("Cannot set {cmd} to {state}: \n{}", get_usage()))
+                }
+                Some((unknown_cmd, _)) => {
+                    return Err(anyhow!("Unknown announcement preference: {unknown_cmd} \n\
+                                        {}", get_usage()))
+                }
+                None => {
+                    return Err(anyhow!("Unknown announcement preference. \n{}", 
+                                        get_usage()))
+                }
+            })
+        }
+
+        Ok(msgs.join("\n"))
+    }
+
+    async fn track(&self) -> Result<String> {
+        let username = self.parameters
+            .first()
+            .context("Expected username for tracking, got none.")?
+            .to_string();
+
+        let user = lcapi::fetch_user(&username).await?;
+        lcdb::track_user(&user)
+            .inspect_err(|_| log::error!("Could not track user {username}"))?;
+
+        self.react_ok().await
+    }
+
+    async fn tracklist(&self) -> Result<String> {
+        let mut output = String::from("**Tracked users:**");
+        let users = lcdb::query_tracked_users();
+        match users {
+            Ok(users) => {
+                for user in users {
+                    output += "\n\t";
+                    output += &user.username;
+                }
+            }
+            Err(err) => {
+                output = format!("Error retrieving tracklist: {err}");
+            }
+        }
+
+        Ok(output)
+    }
+
+    async fn untrack(&self) -> Result<String> {
+        Ok(String::from("`untrack` is currently temporarily disabled."))
+        // let username = parameters
+        //     .first()
+        //     .context("Expected username for untracking, got none.")?
+        //     .to_string();
+
+        // let user = lcapi::fetch_user(username).await?;
+        // lcdb::untrack_user(&user)?;
+
+        // msg.react(
+        //     &ctx.http,
+        //     serenity::all::ReactionType::Unicode(String::from("✅")),
+        // )
+        // .await?;
+        // String::from("")
+    }
+
+    async fn react_ok(&self) -> Result<String> {
+        self.msg.react(
+            &self.ctx.http,
+            serenity::all::ReactionType::Unicode(String::from("✅")),
+        )
+        .await?;
+
+        Ok(String::from(""))
     }
 }
 

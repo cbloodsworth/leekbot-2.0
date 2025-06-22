@@ -56,8 +56,8 @@ pub const USER_PREFS_SCHEMA: &str =
         UNIQUE (username)
     )";
 
-pub const USER_COINS_SCHEMA: &str =
-    "CREATE TABLE IF NOT EXISTS UserCoins (
+pub const LEEK_COINS_SCHEMA: &str =
+    "CREATE TABLE IF NOT EXISTS LeekCoins (
         username       TEXT        NOT NULL    REFERENCES Users(username),
-        coins          INTEGER     DEFAULT 0
+        balance        INTEGER     DEFAULT 0
     )";

@@ -26,7 +26,7 @@ impl<'a> TryFrom<&'a rusqlite::Row<'a>> for models::Submission {
     }
 }
 
-/// Gathers all recent submissions for a user.
+/// Gathers all *recent* submissions for a user.
 pub fn query_submissions_recent_all(user: &models::User) -> DBResult<Vec<models::Submission>> {
     let connection = connect()?;
     let username = &user.username;

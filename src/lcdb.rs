@@ -9,6 +9,7 @@ mod submissions;
 mod users;
 mod problems;
 mod recentcache;
+mod leekcoins;
 
 mod schema;
 
@@ -16,6 +17,7 @@ pub use users::*;
 pub use submissions::*;
 pub use problems::*;
 pub use recentcache::*;
+pub use leekcoins::*;
 
 type DBResult<T> = Result<T, rusqlite::Error>;
 
@@ -48,7 +50,7 @@ pub fn initialize_db() -> DBResult<()> {
 
     // UserCoins
     log::info!("[initialize_db] creating UserCoins table...");
-    connect()?.execute(USER_COINS_SCHEMA, [])?;
+    connect()?.execute(LEEK_COINS_SCHEMA, [])?;
 
     Ok(())
 }

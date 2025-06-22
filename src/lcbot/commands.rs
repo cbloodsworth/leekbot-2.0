@@ -12,7 +12,6 @@ struct CommandInstance<'a> {
     msg: &'a Message,
     ctx: &'a serenity::client::Context,
 
-    #[allow(dead_code, reason="Just because it's never used doesn't mean it's never needed :)")]
     command: &'a str,
     parameters: &'a [&'a str],
 }
@@ -35,40 +34,20 @@ impl Commands {
         // Execute the command
         let result: String = match command {
                 "audit" => cmd.audit().await?,
-               "recent" => Self::get_recently_completed(parameters[0]).await?,
+               "recent" => cmd.recent().await?,
             "tracklist" => cmd.tracklist().await?,
                 "track" => cmd.track().await?,
               "untrack" => cmd.untrack().await?,
-            "prefs" => cmd.prefs().await?,
-            "help" => Self::get_help(),
-            "clanker" => String::from("call me clanker one more mf time"),
-            "insert" => cmd.insert().await?,
-            _ => {
-                if Commands::is_valid_cmd(command) {
-                    log::info!("User submitted unknown command: {}", command);
-                    return Err(anyhow!(
-                        "No such command found: {}, see $help for commands.",
-                        command
-                    ));
-                } else {
-                    log::info!("User submitted invalid command: {}", command);
-                    return Err(anyhow!("Invalid command syntax."));
-                }
-            }
+                "prefs" => cmd.prefs().await?,
+                 "help" => Self::get_help(),
+              "clanker" => String::from("call me clanker one more mf time"),
+               "insert" => cmd.insert().await?,
+                      _ => cmd.unknown_command().await?,
         };
 
         Ok(result)
     }
 
-    async fn get_recently_completed(username: &str) -> Result<String> {
-        Ok(format!(
-            "{}",
-            lcapi::fetch_recently_completed(username)
-                .await?
-                .first()
-                .context(format!("No recently completed problems for {}", username))?
-        ))
-    }
 }
 
 impl CommandInstance<'_> {
@@ -216,7 +195,7 @@ impl CommandInstance<'_> {
 
         let user = lcapi::fetch_user(&username).await?;
         lcdb::track_user(&user)
-            .inspect_err(|_| log::error!("Could not track user {username}"))?;
+            .inspect_err(|_| log::info!("Failed attempt to track {username}"))?;
 
         self.react_ok().await
     }
@@ -255,6 +234,35 @@ impl CommandInstance<'_> {
         // )
         // .await?;
         // String::from("")
+    }
+
+    async fn recent(&self) -> Result<String> {
+        let username = self
+            .parameters
+            .first()
+            .with_context(|| format!("syntax: `{}{} <username>`", 
+                getenv_call_token(), self.command))?;
+
+        Ok(format!(
+            "{}",
+            lcapi::fetch_recently_completed(username)
+                .await?
+                .first()
+                .context(format!("No recently completed problems for {}", username))?
+        ))
+    }
+
+    async fn unknown_command(&self) -> Result<String> {
+        if Commands::is_valid_cmd(self.command) {
+            log::info!("User submitted unknown command: {}", self.command);
+            Err(anyhow!(
+                "No such command found: {}, see $help for commands.",
+                self.command
+            ))
+        } else {
+            log::info!("User submitted invalid command: {}", self.command);
+            Err(anyhow!("Invalid command syntax."))
+        }
     }
 
     async fn react_ok(&self) -> Result<String> {
